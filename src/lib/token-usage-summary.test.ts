@@ -81,6 +81,7 @@ describe('model provider usage', () => {
     ['claude-haiku-5.5', 'claude'],
     ['Claude Fable 5.1', 'claude'],
     ['deepseek-v4.1-flash-free', 'deepseek'],
+    ['deepseek-flash', 'deepseek'],
     ['opencode/DEEPSEEK-v4.1-flash-free (max)', 'deepseek'],
     ['qwen3-coder', 'other'],
     ['my-gptish-model', 'other'],
@@ -151,6 +152,44 @@ describe('model provider usage', () => {
     expect(summarizeProjectProviderUsage(project([]))).toEqual([])
   })
 
+  it('merges historical API aliases with canonical and free model rows without mutating records', () => {
+    const stats = day('2026-11-08', [
+      model('opencode', 'deepseek-flash'),
+      model('opencode', 'deepseek-v4.1-flash'),
+      model('opencode', 'deepseek-v4.1-flash-free'),
+    ])
+    const rows = summarizeDailyModelUsage(stats)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({
+      providerId: 'deepseek',
+      model: 'DeepSeek V4.1 Flash 1017',
+      promptCount: 6,
+      inputTokens: 3_000_000,
+      outputTokens: 300_000,
+      cacheTokens: 1_500_000,
+      totalTokens: 4_800_000,
+      cost: expect.closeTo(1.2645),
+    })
+    expect(calculateDailyCost(stats)).toBeCloseTo(1.2645)
+    expect(calculateProjectCost(project([stats]))).toBeCloseTo(1.2645)
+    expect(summarizeProjectProviderUsage(project([stats]))[0].cost).toBeCloseTo(1.2645)
+    expect(stats.models.map((row) => row.model)).toEqual([
+      'deepseek-flash', 'deepseek-v4.1-flash', 'deepseek-v4.1-flash-free',
+    ])
+  })
+
+  it('keeps reasoning variants separate while resolving API aliases', () => {
+    const rows = summarizeDailyModelUsage(day('2026-11-08', [
+      model('opencode', 'deepseek-flash (max)'),
+      model('opencode', 'deepseek-v4.1-flash-free (max)'),
+      model('opencode', 'deepseek-flash (high)'),
+    ]))
+    expect(rows.map((row) => row.model)).toEqual([
+      'DeepSeek V4.1 Flash 1017 (max)', 'DeepSeek V4.1 Flash 1017 (high)',
+    ])
+    expect(rows.map((row) => row.promptCount)).toEqual([4, 2])
+  })
+
   it('removes the legacy DeepSeek free suffix and merges it with the canonical model', () => {
     const stats = day('2026-10-31', [
       model('opencode', 'deepseek-v4.1-flash-free'),
@@ -158,7 +197,7 @@ describe('model provider usage', () => {
     ])
     const rows = summarizeDailyModelUsage(stats)
     expect(rows).toHaveLength(1)
-    expect(rows[0].model).toBe('deepseek-v4.1-flash')
+    expect(rows[0].model).toBe('DeepSeek V4.1 Flash 1017')
     expect(rows[0].promptCount).toBe(4)
     expect(rows[0].totalTokens).toBe(stats.totalTokens)
     expect(rows[0].cost).toBeCloseTo(calculateDailyCost(stats))
@@ -171,8 +210,23 @@ describe('model provider usage', () => {
       model('opencode', 'another-model-free'),
     ]))
     expect(rows.map((row) => row.model)).toEqual([
-      'deepseek-v4.1-flash (max)',
+      'DeepSeek V4.1 Flash 1017 (max)',
       'another-model-free',
     ])
+  })
+
+  it('uses one readable display name across provider prefixes and casing', () => {
+    const stats = day('2026-11-08', [
+      model('opencode', 'deepseek/deepseek-flash'),
+      model('opencode', 'opencode/DEEPSEEK-v4.1-flash-free'),
+      model('opencode', 'deepseek-v4.1-flash'),
+    ])
+    const rows = summarizeDailyModelUsage(stats)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].model).toBe('DeepSeek V4.1 Flash 1017')
+    expect(rows[0].promptCount).toBe(6)
+    expect(rows[0].totalTokens).toBe(stats.totalTokens)
+    expect(rows[0].cost).toBeCloseTo(calculateDailyCost(stats))
+    expect(stats.models[0].model).toBe('deepseek/deepseek-flash')
   })
 })

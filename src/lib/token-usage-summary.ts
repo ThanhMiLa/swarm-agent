@@ -1,5 +1,5 @@
 import type { DailyUsageStats, ProjectTokenStats } from '@/tauri/token-usage'
-import { calculateModelUsageCost, normalizeModelName } from './token-pricing'
+import { calculateModelUsageCost, normalizeModelName, resolveModelAlias } from './token-pricing'
 
 export type ModelProviderId = 'codex' | 'antigravity' | 'claude' | 'deepseek' | 'other'
 
@@ -53,10 +53,14 @@ export function summarizeDailyModelUsage(day: DailyUsageStats): ProviderModelUsa
   const models = new Map<string, ProviderModelUsage>()
   for (const model of day.models) {
     const providerId = getModelProvider(model.model)
-    // Keep raw agent IDs intact while presenting legacy free variants as the same model.
+    // Resolve aliases for display only; keep the original records intact.
+    const canonicalModel = resolveModelAlias(model.model)
+    // Continue presenting legacy free variants as the same model.
     const displayModel = providerId === 'deepseek'
-      ? model.model.replace(/-free(?=\s*(?:\(|$))/i, '')
-      : model.model
+      ? canonicalModel
+        .replace(/-free(?=\s*(?:\(|$))/i, '')
+        .replace(/^(?:[^/]+\/)*deepseek-v4\.1-flash(?=\s*(?:\(|$))/i, 'DeepSeek V4.1 Flash 1017')
+      : canonicalModel
     const key = JSON.stringify([providerId, displayModel])
     let usage = models.get(key)
     if (!usage) {

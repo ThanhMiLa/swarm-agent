@@ -20,6 +20,15 @@ export interface ModelPricing {
   displayName?: string
 }
 
+/** Resolve API aliases without dropping provider prefixes or reasoning variants. */
+export function resolveModelAlias(rawModel: string): string {
+  // DeepSeek's own API calls V4.1 Flash "deepseek-flash".
+  return rawModel.trim().replace(
+    /(^|\/)deepseek-flash(?=\s*(?:\(|$))/i,
+    '$1deepseek-v4.1-flash'
+  )
+}
+
 /**
  * Remove reasoning effort in parentheses, e.g. "gpt-6.1-sol (high)" -> "gpt-6.1-sol"
  */
@@ -231,7 +240,7 @@ const DEFAULT_FALLBACK_PRICING: ModelPricing = {
  * Accurately handles Google DeepMind promotional date cutoffs.
  */
 export function getModelPricing(rawModel: string, dateStr?: string): ModelPricing {
-  const norm = normalizeModelName(rawModel)
+  const norm = normalizeModelName(resolveModelAlias(rawModel))
   const normHyphen = norm.replace(/\s+/g, '-')
 
   // 1. Check Gemini 4 Argon (Cutoff: Nov 30, 2026)

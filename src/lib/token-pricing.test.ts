@@ -10,6 +10,7 @@ import {
   formatCurrency,
   getModelPricing,
   normalizeModelName,
+  resolveModelAlias,
 } from './token-pricing'
 
 describe('token-pricing', () => {
@@ -94,6 +95,29 @@ describe('token-pricing', () => {
   })
 
   describe('getModelPricing for DeepSeek', () => {
+    it.each([
+      'deepseek-flash',
+      'deepseek-flash (max)',
+      'deepseek/deepseek-flash',
+      'deepseek/DEEPSEEK-FLASH (high)',
+      '  deepseek-flash  ',
+    ])('resolves the API alias %s to the configured V4.1 Flash pricing', (name) => {
+      expect(getModelPricing(name)).toEqual(getModelPricing('deepseek-v4.1-flash'))
+      expect(calculateTokenCost(name, 1_000_000, 100_000, 500_000)).toBeCloseTo(0.4215)
+    })
+
+    it.each(['deepseek-flash-lite', 'my-deepseek-flash', 'deepseek-v4-pro', ''])(
+      'does not rewrite an unrelated model %s', (name) => {
+        expect(resolveModelAlias(name)).toBe(name)
+        expect(getModelPricing(name).displayName).toBe('Standard Model')
+      }
+    )
+
+    it('preserves the provider prefix and reasoning variant when resolving an alias', () => {
+      expect(resolveModelAlias('deepseek/deepseek-flash (max)'))
+        .toBe('deepseek/deepseek-v4.1-flash (max)')
+    })
+
     it('matches DeepSeek V4.1 Flash', () => {
       const p = getModelPricing('DeepSeek V4.1 Flash (High)')
       expect(p.inputPerMillion).toBe(0.3)
