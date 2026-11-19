@@ -63,7 +63,7 @@ Two independent fixes shipped together:
 ### New component `src/components/Welcome/RecentsDialog.tsx`
 
 Modeled on `SessionsDialog`'s hand-rolled overlay (same `role="dialog"` +
-`aria-modal` so `overlay-watch` and `terminal-focus` cover it for free):
+`aria-modal` so  `terminal-focus` cover it for free):
 
 - **Layout:** single column (no rail) — search input on top (auto-focused on
   open, cleared on every open), scrollable list, footer with folder count and

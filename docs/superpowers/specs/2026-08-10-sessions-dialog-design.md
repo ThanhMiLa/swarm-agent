@@ -29,9 +29,8 @@ never expands in place; it stays capped at `VISIBLE_SESSION_ROWS`. Its
 filter tabs and rows are unchanged.
 
 **Dialog.** Centered modal, ~640×440 (max-width/height guarded for small
-windows), dark backdrop, hand-rolled per `ClearWorktreeDialog`. The panel
-carries `role="dialog"` + `aria-modal` so `overlay-watch` and
-`terminal-focus` recognize it with zero extra wiring.
+windows) and a dark backdrop. The panel carries `role="dialog"` and
+`aria-modal` so the terminal focus handler can recognize it.
 
 - **Left rail (~150px)** — "Agents" label, then All / Claude Code / Codex /
   OpenCode with per-agent counts. Zero-count agents are disabled. Rail

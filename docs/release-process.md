@@ -1,4 +1,4 @@
-# Releasing Swarmterm
+# Releasing SwarmAgent
 
 Start here. Platform specifics live in [release-macos.md](release-macos.md)
 and [release-windows.md](release-windows.md); this page is the flow that ties
@@ -13,8 +13,8 @@ the two machines together and the rules that keep auto-update working.
    → commit
 2. git tag v0.2.0 && git push origin v0.2.0
 3. npm run release:mac                   3. npm run release:win
-   → .dmg (new installs)                    → Swarmterm_0.2.0_x64-setup.exe
-   → Swarmterm.app.tar.gz + .sig            → …setup.exe.sig
+   → .dmg (new installs)                    → SwarmAgent_0.2.0_x64-setup.exe
+   → SwarmAgent.app.tar.gz + .sig            → …setup.exe.sig
 4. npm run release:publish               4. npm run release:publish
         └──────────► draft release "v0.2.0" ◄──────────┘
 5. npm run release:publish -- --publish   (either machine; refuses while any
@@ -44,12 +44,12 @@ body into `latest.json`, including the `--publish` run itself.
 ## The updater signing key
 
 Updates are trusted via **minisign**, not via Apple/Windows code signing.
-Every build signs its updater artifacts with the private key; the public key
-is baked into `tauri.conf.json`; the plugin refuses any artifact whose
-signature does not verify.
+Release scripts sign updater artifacts with the private key and embed the
+matching `SWARM_AGENT_UPDATER_PUBLIC_KEY` from `.env.release`. Development
+builds have no updater endpoint.
 
-- Private key: `~/Developer/apple-signing/swarmterm-updater.key`
-- Its password: `~/Developer/apple-signing/swarmterm-updater.key.password`
+- Private key: `~/Developer/apple-signing/swarm-agent-updater.key`
+- Its password: `~/Developer/apple-signing/swarm-agent-updater.key.password`
 - Both referenced from `.env.release` as `TAURI_SIGNING_PRIVATE_KEY` (path)
   and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 - The **same key file** must exist on every build machine — copy it to the
@@ -69,8 +69,8 @@ guide's *Telemetry* section for exactly what is sent). The keys are baked in
 at **compile** time via `option_env!`, so they must be present in
 `.env.release` on **both** build machines:
 
-- `SWARMTERM_GA_MEASUREMENT_ID` — the GA4 web stream's `G-…` id.
-- `SWARMTERM_GA_API_SECRET` — Measurement Protocol API secret, created under
+- `SWARM_AGENT_GA_MEASUREMENT_ID` — the GA4 web stream's `G-…` id.
+- `SWARM_AGENT_GA_API_SECRET` — Measurement Protocol API secret, created under
   the same stream (Admin → Data streams → Measurement Protocol API secrets).
 
 Forgetting them does not fail the build — it silently ships a release that
@@ -89,9 +89,9 @@ is a thin `gh` wrapper around it):
   "notes": "…release body…",
   "pub_date": "2026-08-12T00:00:00Z",
   "platforms": {
-    "darwin-aarch64":  { "signature": "…", "url": "…/v0.2.0/Swarmterm.app.tar.gz" },
-    "darwin-x86_64":   { "signature": "…", "url": "…/v0.2.0/Swarmterm.app.tar.gz" },
-    "windows-x86_64":  { "signature": "…", "url": "…/v0.2.0/Swarmterm_0.2.0_x64-setup.exe" }
+    "darwin-aarch64":  { "signature": "…", "url": "…/v0.2.0/SwarmAgent.app.tar.gz" },
+    "darwin-x86_64":   { "signature": "…", "url": "…/v0.2.0/SwarmAgent.app.tar.gz" },
+    "windows-x86_64":  { "signature": "…", "url": "…/v0.2.0/SwarmAgent_0.2.0_x64-setup.exe" }
   }
 }
 ```
@@ -122,3 +122,9 @@ headless-capable (plain env vars, no prompts) so the eventual workflow is a
 lift-and-shift. Linux bundles: additive later (`linux-x86_64` key in the same
 manifest). Windows Authenticode: see the SmartScreen section of
 [release-windows.md](release-windows.md).
+
+
+SwarmAgent development builds have no updater endpoint. Release builds must set
+`SWARM_AGENT_UPDATER_PUBLIC_KEY` in `.env.release` alongside its matching
+private key. The platform release scripts enable updater artifacts and point the
+installer to this repository's releases.

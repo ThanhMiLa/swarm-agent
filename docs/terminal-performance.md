@@ -1,6 +1,6 @@
 # Terminal scrolling: implementation and acceptance
 
-Swarmterm keeps React, Tauri and pinned `@xterm/xterm` 6.0.0. These changes apply
+SwarmAgent keeps React, Tauri and pinned `@xterm/xterm` 6.0.0. These changes apply
 to every terminal, shell and CLI. They do not use a Codex-specific input path.
 
 **Current scope, confirmed by the user on 2026-10-31:** keep the present roughly
@@ -21,7 +21,7 @@ Settings → Terminal → Scrolling applies immediately to running panes:
   scrollback and wheel input forwarded to its TUI. A CLI launched manually in a
   plain shell inherits the default. Existing saved values are preserved.
 
-Preferences persist under `swarmterm:terminal-scrolling`. Trackpad gestures use
+Preferences persist under `swarm-agent:terminal-scrolling`. Trackpad gestures use
 xterm's device classification; the application does not add its own inertia.
 Normal scrollback remains xterm's viewport, while mouse-enabled TUIs receive
 normalised line counts. A TUI ultimately decides how those reports move content.
@@ -36,7 +36,7 @@ normalised line counts. A TUI ultimately decides how those reports move content.
   cannot hold up its first keystrokes.
 - Mouse reports use xterm's own protocol restrictions, measured coordinates and
   encoders, including legacy binary input and SGR pixel coordinates. Mouse input
-  stays in its source pane and does not activate keyboard broadcast or typing state.
+  stays in its source pane and leaves the typing state untouched.
 - The enhanced TUI path retains fractional deltas, sends a leading batch immediately
   and limits work to 32 reports per animation frame. Buffer/protocol/encoding changes,
   reset, respawn and disposal discard obsolete queued input. Repeated activation of
@@ -78,7 +78,7 @@ normalised line counts. A TUI ultimately decides how those reports move content.
 
 1. Parser yield budget: 12 → 4 ms.
 2. `enhancedWheel`, disabled by default in the library, bypasses the small-delta
-   reduction in native mouse handling. Swarmterm enables it in Enhanced mode.
+   reduction in native mouse handling. SwarmAgent enables it in Enhanced mode.
 3. Smooth viewport updates flush pending row rendering in their existing animation
    frame instead of waiting for another frame.
 4. When streaming output trims scrollback, the viewport rebases the active animation
@@ -89,12 +89,12 @@ To change the patch, edit installed TypeScript source, then run:
 
 ```sh
 npm run patch:xterm:build
-npx patch-package @xterm/xterm
+npx patch-package @xterm/xterm @xterm/addon-webgl
 ```
 
 Do not edit minified bundles manually. Test a clean `npm ci` in an isolated copy;
-`postinstall` must apply the patch and both entrypoints must remain usable. The
-adapter in `terminal-xterm.ts` is intentionally tied to this pinned version.
+`postinstall` must apply both patches and the CommonJS and ESM entrypoints
+must remain usable. The adapter in `terminal-xterm.ts` is tied to xterm 6.0.0.
 
 ## Native benchmark
 

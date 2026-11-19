@@ -1,9 +1,7 @@
 # Manual smoke tests
 
-Run this by hand before a release, or after touching pty, focus, War Room or
-worktree code. Start with `npm run tauri dev`.
-
-A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.md).
+Run this by hand before a release, or after touching pty, focus, Agent Team or
+workspace code. Start with `npm run tauri dev`.
 
 ## Basics
 
@@ -49,8 +47,6 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
       press `Shift+Enter`, then type `line two` → both lines remain in the
       composer and nothing runs until plain Enter is pressed. No duplicate
       blank line appears; `Ctrl+J` continues to work as before.
-- [ ] **Broadcast soft line break:** arm two agent panes for broadcast and
-      repeat the previous check → each pane receives exactly one line break.
 - [ ] **Shortcut isolation:** with terminal Find open, `Shift+Enter` still
       selects the previous match instead of inserting terminal input.
 - [ ] **Activity dot:** lights while a pane streams output, clears when quiet.
@@ -58,7 +54,7 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
 ## Terminal links
 
 - [ ] URL: `echo https://example.com` → hover underlines it; a **plain click**
-      opens the OS browser and does NOT open the in-app preview column.
+      opens the default OS browser.
 - [ ] Drag-select that URL with the mouse → text selects, no browser opens.
 - [ ] Absolute path: `ls $PWD/package.json` → plain click does nothing;
       `⌘/Ctrl + click` opens it in the editor.
@@ -71,109 +67,24 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
 - [ ] OSC 8 from an agent: run `claude` in a pane and have it read a file so it
       prints a path → `⌘/Ctrl + click` opens the right file.
 
-## Broadcast and settings
+## Settings
 
-- [ ] `⌘/Ctrl + Shift + B` enters broadcast; `Alt + Click` adds/removes panes;
-      typing once reaches every group member; `Esc` exits.
 - [ ] Settings → Terminal: changing font / size / line height / ligatures
       updates the preview and every pane.
 - [ ] Settings → Keyboard Shortcuts lists the bindings for the current platform.
 - [ ] `⌘/Ctrl + B` toggles the sidebar; `Esc` closes Settings.
 - [ ] Restart the app → appearance and terminal preferences are remembered.
 
-## Worktrees
+## Agent Team
 
-- [ ] The "Isolate features in git worktrees" toggle is disabled for a
-      non-repository folder (and for a repo with no commits yet).
-- [ ] Toggle on + create a workspace with 3 Claude panes → 3 worktree
-      directories exist next to the repo, 🌿 badges appear immediately without
-      typing a prompt.
-- [ ] Broadcast one prompt to the 3 panes → 3 separate, clean diffs on 3
-      branches in the Git tab.
-- [ ] `worktree.remove` refuses a worktree with uncommitted changes; commit and
-      retry → the directory is removed.
-- [ ] Create a workspace with the toggle OFF, call `worktree.spawn` → fails with
-      "worktree isolation is not enabled".
-- [ ] Closing a pane or workspace does NOT delete any worktree.
+- [ ] Open two workspaces in the same checkout. Give each a member named `codex-1`. Confirm that each panel displays only its own roster and runs.
 
-## Web preview
-
-- [ ] Preview a framing-hostile site: type `github.com` in the address bar —
-      the page must render (not a blank frame).
-- [ ] Click links inside the page: the address bar URL and tab title follow;
-      Back returns and Forward re-advances.
-- [ ] Popup handling: on a page that calls `window.open` (e.g. an OAuth
-      "sign in" link), the preview navigates in place — no OS window appears;
-      Back returns to the opener page.
-- [ ] Overlay z-order: with a preview showing, open the workspace-tab context
-      menu and the Settings dialog — both must render ABOVE the page (the
-      preview hides while they're open, showing the dimmed placeholder).
-- [ ] Focus: have an agent call `browser.open_preview` while you type in a
-      terminal — keystrokes keep landing in the shell.
-- [ ] Resize: drag the panel separator — the page stays glued to the column
-      with no white gaps or smearing.
-- [ ] Pane switch keeps page state: two panes with previews — switching
-      between them must not reload either page.
-- [ ] Kill a pane with an open preview: the webview disappears with it; other
-      panes' previews are untouched.
-- [ ] Welcome z-order: with a preview showing, open Welcome ("+") — the page
-      must hide (no native paint over the Welcome page); closing Welcome
-      brings the preview back.
-- [ ] Switch agent/shell on a pane with an open preview (composer respawn) →
-      the address bar clears to its empty state; opening a new URL works and
-      shows.
-- [ ] Type `exit` in a pane with an open preview, then respawn/restart it →
-      same: address bar clears, a new URL opens and shows.
-
-## War Room — basics
-
-- [ ] Drag two agent panes into the War Room tab → member chips appear and an
-      intro is typed into each pane.
-- [ ] **Probe:** agent A sends a probe → the transcript shows it, idle agent B
-      is nudged and reads its inbox.
-- [ ] **Execute:** agent A sends execute → the prompt runs in pane B and the
-      transcript marks it orange.
-- [ ] **Revocation:** drag a chip out or press ✕ → the next tool call from that
-      pane is refused with "not in the War Room".
-- [ ] **PTY death:** close a member pane → the transcript logs the leave and
-      `list_peers` shows no ghost.
-
-## War Room — moderator and typing guard
-
-- [ ] Broadcast a probe from the composer → both panes are nudged; the
-      transcript shows one `Moderator → everyone` group with a crown avatar.
-- [ ] Direct probe to one member → only that pane is nudged.
-- [ ] Switch to Execute → the `Everyone` row disappears, the input turns orange;
-      sending a short prompt pastes and runs it in that pane only.
-- [ ] An agent sends to `__moderator__` → the reply lands in Discussion and
-      nothing is typed into any pane.
-- [ ] An agent sends `mode: "execute"` to `__moderator__` → rejected.
-- [ ] Type half a line into pane A without Enter, then probe pane A from the
-      composer → nothing is typed, the half line is intact, the pill appears in
-      pane A, and the Members sub-tab shows `⏸1`.
-- [ ] Press Enter in pane A → the nudge arrives right after.
-- [ ] Repeat, then click the pill instead → delivered immediately.
-- [ ] Repeat, then click into pane B → pane A's pill stays. An unsubmitted line
-      holds regardless of focus.
-- [ ] Close pane A while a delivery is held → no stray text, no orphan badge.
-
-## War Room — multiple rooms
-
-- [ ] Launch → one "War Room" tab; drag a pane into the panel body → it joins
-      that room and the intro names it.
-- [ ] `+` creates "Website B"; drag a second pane straight onto the B tab → it
-      joins B and the first room is untouched.
-- [ ] `war_room.list_peers` from each pane shows only same-room peers, with the
-      correct `room` name.
-- [ ] Broadcast in room A → room B's transcript receives nothing.
-- [ ] Drag a member chip from A onto tab B → A logs Leave, B logs Join
-      (pending), the intro is retyped, and the next tool call reconnects.
-- [ ] Double-click a tab → rename inline; composer and transcript update at once.
-- [ ] Press ✕ on a room with members → two-step confirm → members disconnect,
-      the tab disappears, the active room falls back to a remaining one.
-- [ ] With only one room left → its tab has no ✕.
-- [ ] While viewing room A, queue a message into a pane being typed in in room B
-      → tab B shows `⏸N`.
+- [ ] Add three out of four Codex panes in the same checkout. Confirm the count, exact routing by name, duplicate name rejection and stable aliases after removal.
+- [ ] Enable Team Mode. A plain prompt stays solo. An explicit team request dispatches once and returns the leader to its input before all workers finish.
+- [ ] Use each of Codex, Antigravity and OpenCode as a leader and a worker. Hold one worker back and confirm the original leader receives and reviews the other result immediately. If a second result arrives during that review, confirm it starts its own turn after the leader returns to the composer. Reports contain paths and tests, while code appears in the current checkout.
+- [ ] Switch tabs or hide the panel during a run. Confirm delivery still works. Check that a typed draft, a permission prompt and a restarted pane prevent automated input into the wrong place.
+- [ ] Close a worker or wait for timeout. Confirm partial reports remain available. Close the leader and verify no other pane receives review.
+- [ ] Try a linked worktree, turn Team Mode off and change branches during a queued handoff. Check the resulting rejection or visible status.
 
 ## Claude Code status line
 
@@ -183,7 +94,7 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
 - [ ] A fresh Claude session reads `ctx —` until its first reply.
 - [ ] In a plain Terminal pane run `claude --strict-mcp-config` → `mcp …`:
       Claude is alive but never called our server.
-- [ ] With a Claude pane running, quit Swarmterm from the tray (Quit, not
+- [ ] With a Claude pane running, quit SwarmAgent from the tray (Quit, not
       close-to-tray) → the next render reads `mcp ✗`.
 - [ ] Run `claude` in a system terminal → the `mcp` segment is absent, only
       `ctx …` renders.
@@ -193,7 +104,7 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
       `~/.claude/settings.json` and every other key survived. Toggle back on →
       it returns, pointing at the current binary.
 - [ ] Put your own `statusLine` in `~/.claude/settings.json`, relaunch
-      Swarmterm → it is untouched (a warning is logged to the devtools console).
+      SwarmAgent → it is untouched (a warning is logged to the devtools console).
 - [ ] Switch a pane's agent (respawns the pty under the same id) → the line
       drops to `mcp …` until the new Claude connects.
 
@@ -215,8 +126,6 @@ A longer scripted War Room scenario lives in [`war-room-demo.md`](war-room-demo.
 - [ ] Folder with no sessions → no "Resume sessions" section, composer
       otherwise unchanged.
 - [ ] Uninstall/rename an agent CLI → its sessions disappear from the list.
-- [ ] Worktree toggle ON + a ticked session → stepper panes get worktrees,
-      the resume pane spawns at the session's original folder.
 - [ ] Switch agent on a resume pane via the header dropdown → pane respawns
       fresh (no --resume in the typed command).
 
@@ -232,20 +141,13 @@ Amp, Gemini CLI, Cursor Agent, Antigravity, OMP — on a machine that has it:
       red on a permission prompt, green when finished in background (OMP:
       plain activity dot only — expected).
 - [ ] Per-pane agent switcher lists the agent and respawns onto it.
-- [ ] War Room: drag the pane into a room → probe lands in inbox; execute
-      pastes + runs the prompt (Copilot: verify the pasted Enter is not
-      swallowed after focus loss — herdr reports it needs a focus-gained
-      event first; if it reproduces, file it).
 - [ ] Qwen only: "Resume sessions" lists prior qwen sessions for the folder
       and Create runs `qwen --resume <id>`.
-- [ ] Qwen only (MCP): a qwen pane sees the `swarmterm` MCP server
-      (`/mcp` or `qwen mcp list`) and can call `browser.open_preview`.
-- [ ] Worktree toggle ON → `worktree.spawn` accepts the agent's template id.
 
 ## Signed release (macOS)
 
 Run against the `.dmg` produced by `npm run release:mac`, ideally on a Mac that
-has never run Swarmterm from source. Details in
+has never run SwarmAgent from source. Details in
 [`release-macos.md`](release-macos.md).
 
 - [ ] The disk image opens with no Gatekeeper warning after
@@ -253,16 +155,15 @@ has never run Swarmterm from source. Details in
 - [ ] Dragging to Applications and launching shows no "unidentified developer"
       or "damaged" dialog.
 - [ ] A terminal pane spawns and runs `ls`; a split pane spawns a second shell.
-- [ ] The web preview column loads `https://github.com`.
-- [ ] `echo $SWARMTERM_MCP_URL` inside a pane prints a loopback URL.
-- [ ] A War Room message reaches a second pane.
-- [ ] Prompts for Desktop/Documents/Downloads access name Swarmterm and carry a
+- [ ] `echo $SWARM_AGENT_MCP_URL` inside a pane prints a loopback URL.
+- [ ] An Agent Team assignment reaches its named pane.
+- [ ] Prompts for Desktop/Documents/Downloads access name SwarmAgent and carry a
       readable explanation (the `Info.plist` usage strings).
 
 ## Windows release
 
 Run against the installer produced by `npm run release:win`, ideally on a
-machine that never built Swarmterm. Details in
+machine that never built SwarmAgent. Details in
 [`release-windows.md`](release-windows.md).
 
 - [ ] A freshly downloaded `…x64-setup.exe` shows SmartScreen's "Windows
@@ -284,7 +185,7 @@ Needs two published releases (the older installed locally). Full flow in
       and relaunching lands on the new version (check the tray tooltip /
       About); on Windows the installer runs and the app comes back updated.
 - [ ] On the freshly updated build, tray → **Check for Updates…** reports
-      "Swarmterm is up to date".
+      "SwarmAgent is up to date".
 - [ ] With Wi-Fi off, launching the app shows no update UI at all; the tray
       check surfaces a dismissible error toast.
 

@@ -202,7 +202,7 @@ git commit -m "feat(tray): use generated logo marks, template icon on macOS"
 - Modify: `src/components/Welcome/Welcome.tsx`
 
 **Interfaces:**
-- Consumes: `filterRecents(recents, query)` / `folderName(path)` from `@/lib/recent-folders`; `useRecentsStore` (`recents`, `remove`); `SessionsDialog`'s overlay conventions (`role="dialog"` + `aria-modal` keep `overlay-watch`/`terminal-focus` working for free).
+- Consumes: `filterRecents(recents, query)` / `folderName(path)` from `@/lib/recent-folders`; `useRecentsStore` (`recents`, `remove`); `SessionsDialog`'s overlay conventions (`role="dialog"` + `aria-modal` keep `terminal-focus` working for free).
 - Produces: `RecentsDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (path: string) => void })` — Task 5's docs describe this behavior.
 
 - [ ] **Step 1: Create `src/components/Welcome/RecentsDialog.tsx`**
@@ -227,7 +227,7 @@ interface RecentsDialogProps {
  * Working-folder field and closes. Recents live in the global store (not
  * per-folder props) so removal here updates the composer list and the
  * title-bar dropdown alike. Hand-rolled overlay per SessionsDialog;
- * role="dialog" is what overlay-watch and terminal-focus key on.
+ * role="dialog" is what terminal-focus key on.
  */
 export function RecentsDialog({ open, onClose, onPick }: RecentsDialogProps): ReactElement | null {
   const recents = useRecentsStore((s) => s.recents)

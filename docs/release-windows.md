@@ -1,6 +1,6 @@
-# Releasing Swarmterm for Windows
+# Releasing SwarmAgent for Windows
 
-Swarmterm ships as an NSIS installer (`Swarmterm_<version>_x64-setup.exe`),
+SwarmAgent ships as an NSIS installer (`SwarmAgent_<version>_x64-setup.exe`),
 built locally on a Windows machine. The build is **deliberately unsigned** —
 see the SmartScreen section for what users see and why that is acceptable for
 now. The updater artifact is the installer itself plus a minisign signature;
@@ -18,7 +18,7 @@ The overall flow (bump → tag → build → publish) lives in
 3. **Node 20+** and `npm`.
 4. **GitHub CLI:** `winget install GitHub.cli`, then `gh auth login`
    (the publish step drives `gh`).
-5. **The updater signing key:** copy `swarmterm-updater.key` from the mac's
+5. **The updater signing key:** copy `swarm-agent-updater.key` from the mac's
    `~/Developer/apple-signing/` over a private channel (USB stick — never the
    repo, never a chat upload). Keep it outside the repo checkout.
 6. Clone the repo, `npm install`, then:
@@ -30,8 +30,8 @@ The overall flow (bump → tag → build → publish) lives in
    Fill in only the two updater variables (Windows paths):
 
    ```
-   TAURI_SIGNING_PRIVATE_KEY=C:\Users\<you>\secrets\swarmterm-updater.key
-   TAURI_SIGNING_PRIVATE_KEY_PASSWORD=<from swarmterm-updater.key.password>
+   TAURI_SIGNING_PRIVATE_KEY=C:\Users\<you>\secrets\swarm-agent-updater.key
+   TAURI_SIGNING_PRIVATE_KEY_PASSWORD=<from swarm-agent-updater.key.password>
    ```
 
    The Apple variables stay empty on this machine.
@@ -49,7 +49,7 @@ the version from `tauri.conf.json`. Output lands in
 `src-tauri\target\release\bundle\nsis\`.
 
 To sanity-check the installer locally: run it (per-user install, no admin
-prompt), launch Swarmterm, then uninstall via Settings → Apps.
+prompt), launch SwarmAgent, then uninstall via Settings → Apps.
 
 ## SmartScreen: what unsigned means
 

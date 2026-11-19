@@ -4,7 +4,7 @@
 
 **Goal:** Clicking "Show all" in the Welcome composer's Resume-sessions section opens a two-column modal (agent rail + searchable, scrollable session list) instead of expanding inline.
 
-**Architecture:** A pure `searchSessions` helper in `src/lib/agent-sessions.ts` (TDD), a shared `SessionRow` component so the inline list and the dialog render identical rows, and a hand-rolled modal `SessionsDialog` following the existing `ClearWorktreeDialog` pattern. Selection (`tickedSessions`) stays in `Welcome.tsx` and is passed down — the dialog is a bigger window onto the same state. The dialog's agent filter is dialog-local; the composer's filter tabs are untouched.
+**Architecture:** A pure `searchSessions` helper in `src/lib/agent-sessions.ts` (TDD), a shared `SessionRow` component so the inline list and the dialog render identical rows, and a modal `SessionsDialog`. Selection (`tickedSessions`) stays in `Welcome.tsx` and is passed down — the dialog is a bigger window onto the same state. The dialog's agent filter is dialog-local; the composer's filter tabs are untouched.
 
 **Tech Stack:** React 19 + TypeScript (strict), Tailwind, zustand (not needed here), Vitest, lucide-react icons.
 
@@ -260,8 +260,8 @@ interface SessionsDialogProps {
  * the dialog is a bigger window onto the same selection, never a second one.
  * The rail filter is deliberately dialog-local: the shared-state variant left
  * the composer section unexpectedly filtered after the dialog closed.
- * Hand-rolled overlay per ClearWorktreeDialog; role="dialog" is what
- * overlay-watch and terminal-focus key on, so both cover it for free.
+ * The dialog role is what
+ * terminal-focus key on, so both cover it for free.
  */
 export function SessionsDialog({
   open,

@@ -1,6 +1,6 @@
-# Releasing Swarmterm for macOS
+# Releasing SwarmAgent for macOS
 
-Swarmterm ships as a universal `.dmg` signed with a Developer ID Application
+SwarmAgent ships as a universal `.dmg` signed with a Developer ID Application
 certificate and notarized by Apple. Without both, macOS refuses to open a
 downloaded build.
 
@@ -65,8 +65,8 @@ Fill in all four values, then confirm Apple accepts them:
 | `APPLE_API_ISSUER` | Issuer ID (UUID) in App Store Connect |
 | `APPLE_API_KEY` | Key ID (10 characters) |
 | `APPLE_API_KEY_PATH` | absolute path to `AuthKey_<KeyID>.p8` |
-| `TAURI_SIGNING_PRIVATE_KEY` | path to `swarmterm-updater.key` — see [release-process.md](release-process.md) |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | contents of `swarmterm-updater.key.password` |
+| `TAURI_SIGNING_PRIVATE_KEY` | path to `swarm-agent-updater.key` — see [release-process.md](release-process.md) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | contents of `swarm-agent-updater.key.password` |
 
 ## Releasing
 
@@ -76,7 +76,7 @@ npm run release:mac              # universal .dmg, notarized + stapled
 ```
 
 Both passes also emit the auto-updater artifacts next to the `.app` —
-`Swarmterm.app.tar.gz` plus its minisign `.sig` — and the script asserts they
+`SwarmAgent.app.tar.gz` plus its minisign `.sig` — and the script asserts they
 exist. The `.dmg` is for new installs from the Releases page; the tarball is
 what installed apps download when they update. Uploading everything to the
 release is `npm run release:publish` ([release-process.md](release-process.md)).
