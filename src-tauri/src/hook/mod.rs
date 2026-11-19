@@ -1,6 +1,6 @@
-//! The `swarmterm --hook` command: Claude Code runs it from its hook config on
+//! The `swarm-agent --hook` command: Claude Code runs it from its hook config on
 //! every lifecycle event and pipes the event JSON to stdin. We forward a
-//! *signal* (working / blocked / idle / forget) to the running Swarmterm over
+//! *signal* (working / blocked / idle / forget) to the running SwarmAgent over
 //! the loopback MCP port so the pane's agent state comes from Claude itself
 //! instead of the screen-scrape heuristics in `lib/agent-state`.
 //!
@@ -24,8 +24,8 @@
 //! rest of the payload (prompt text, `last_assistant_message`, tool input,
 //! cwd) must not leave the pane, so it is never even read into a struct.
 
-pub mod post;
 pub mod install;
+pub mod post;
 
 /// What a hook event means for the pane's agent state. `Forget` = drop hook
 /// authority (SessionStart/SessionEnd) so the screen-scraper resumes alone:
@@ -38,6 +38,7 @@ pub enum Signal {
     Blocked,
     Idle,
     Forget,
+    AgentExited,
 }
 
 /// The two stdin fields we read. Everything else (prompt, last_assistant_message,
@@ -82,9 +83,7 @@ pub fn signal_for(event: &str, notification_type: Option<&str>) -> Option<Signal
     match (event, notification_type) {
         ("UserPromptSubmit", _) => Some(Signal::Working),
         ("PermissionRequest", _) => Some(Signal::Blocked),
-        ("Notification", Some("permission_prompt" | "elicitation_dialog")) => {
-            Some(Signal::Blocked)
-        }
+        ("Notification", Some("permission_prompt" | "elicitation_dialog")) => Some(Signal::Blocked),
         ("Notification", Some("idle_prompt")) => Some(Signal::Idle),
         ("Notification", _) => None,
         ("PostToolUse", _) => Some(Signal::Working),
@@ -114,12 +113,12 @@ const POST_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 pub fn run_cli() {
     use std::io::Read;
 
-    // Env first: a Claude run outside Swarmterm has no session, so exit in
+    // Env first: a Claude run outside SwarmAgent has no session, so exit in
     // microseconds without touching stdin — the hook is registered globally
     // in ~/.claude/settings.json and fires in every Claude Code, not just ours.
     let (Ok(url), Ok(token)) = (
-        std::env::var("SWARMTERM_MCP_URL"),
-        std::env::var("SWARMTERM_SESSION"),
+        std::env::var("SWARM_AGENT_MCP_URL"),
+        std::env::var("SWARM_AGENT_SESSION"),
     ) else {
         return;
     };
@@ -132,6 +131,18 @@ pub fn run_cli() {
     let _ = std::io::stdin().read_to_string(&mut raw);
     if let Some(signal) = signal_from_stdin(&raw) {
         let _ = post::post_signal(url.trim(), token.trim(), signal, POST_TIMEOUT);
+    }
+}
+
+/// Called by the shell after its configured agent process exits.
+pub fn report_agent_exit() {
+    if let (Ok(url), Ok(token)) = (
+        std::env::var("SWARM_AGENT_MCP_URL"),
+        std::env::var("SWARM_AGENT_SESSION"),
+    ) {
+        if !token.trim().is_empty() {
+            let _ = post::post_signal(&url, &token, Signal::AgentExited, POST_TIMEOUT);
+        }
     }
 }
 
@@ -219,7 +230,12 @@ mod tests {
             serde_json::to_string(&Signal::Working).unwrap(),
             "\"working\""
         );
-        for s in [Signal::Working, Signal::Blocked, Signal::Idle, Signal::Forget] {
+        for s in [
+            Signal::Working,
+            Signal::Blocked,
+            Signal::Idle,
+            Signal::Forget,
+        ] {
             let json = serde_json::to_string(&s).unwrap();
             assert_eq!(serde_json::from_str::<Signal>(&json).unwrap(), s);
         }

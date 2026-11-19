@@ -29,11 +29,11 @@ pub fn format_command(exe: &str, windows: bool) -> String {
 }
 
 /// Does this `statusLine.command` belong to us? Both halves must match so a
-/// third-party script that happens to live next to a `swarmterm` binary, or an
+/// third-party script that happens to live next to a `swarm-agent` binary, or an
 /// unrelated tool that also takes `--statusline`, is left alone.
 pub fn is_ours(command: &str) -> bool {
     let c = command.trim().to_ascii_lowercase();
-    c.ends_with("--statusline") && c.contains("swarmterm")
+    c.ends_with("--statusline") && (c.contains("swarm-agent") || c.contains("swarmterm"))
 }
 
 /// What `merge_settings` decided.
@@ -173,13 +173,13 @@ mod tests {
         serde_json::from_str(s).unwrap()
     }
 
-    const OURS: &str = "\"/Applications/Swarmterm.app/Contents/MacOS/swarmterm\" --statusline";
+    const OURS: &str = "\"/Applications/SwarmAgent.app/Contents/MacOS/swarm-agent\" --statusline";
 
     #[test]
     fn quotes_the_path_and_appends_the_flag() {
         assert_eq!(
             format_command(
-                "/Applications/Swarmterm.app/Contents/MacOS/swarmterm",
+                "/Applications/SwarmAgent.app/Contents/MacOS/swarm-agent",
                 false
             ),
             OURS
@@ -193,10 +193,10 @@ mod tests {
         // resolves. Forward slashes work in both shells.
         assert_eq!(
             format_command(
-                "C:\\Users\\me\\AppData\\Local\\Swarmterm\\swarmterm.exe",
+                "C:\\Users\\me\\AppData\\Local\\SwarmAgent\\swarm-agent.exe",
                 true
             ),
-            "\"C:/Users/me/AppData/Local/Swarmterm/swarmterm.exe\" --statusline"
+            "\"C:/Users/me/AppData/Local/SwarmAgent/swarm-agent.exe\" --statusline"
         );
     }
 
@@ -205,23 +205,23 @@ mod tests {
         // A backslash is a legal character in a POSIX filename; rewriting it
         // there would corrupt the path.
         assert_eq!(
-            format_command("/tmp/we\\ird/swarmterm", false),
-            "\"/tmp/we\\ird/swarmterm\" --statusline"
+            format_command("/tmp/we\\ird/swarm-agent", false),
+            "\"/tmp/we\\ird/swarm-agent\" --statusline"
         );
     }
 
     #[test]
     fn recognises_our_own_command() {
         assert!(is_ours(OURS));
-        assert!(is_ours("\"C:/x/swarmterm.exe\" --statusline"));
-        assert!(is_ours("/usr/local/bin/swarmterm --statusline"));
+        assert!(is_ours("\"C:/x/swarm-agent.exe\" --statusline"));
+        assert!(is_ours("/usr/local/bin/swarm-agent --statusline"));
     }
 
     #[test]
     fn does_not_claim_a_foreign_command() {
         assert!(!is_ours("~/.claude/statusline.sh"));
         assert!(!is_ours("starship prompt"));
-        assert!(!is_ours("swarmterm"));
+        assert!(!is_ours("swarm-agent"));
         assert!(!is_ours("some-other-tool --statusline"));
         assert!(!is_ours(""));
     }
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn rewrites_our_entry_when_the_binary_moved() {
         let existing =
-            r#"{"statusLine":{"type":"command","command":"\"/old/path/swarmterm\" --statusline"}}"#;
+            r#"{"statusLine":{"type":"command","command":"\"/old/path/swarm-agent\" --statusline"}}"#;
         let SettingsWrite::Write(out) = merge_settings(Some(existing), Some(OURS)).unwrap() else {
             panic!("expected a write");
         };

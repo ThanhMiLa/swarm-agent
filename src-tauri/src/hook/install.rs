@@ -1,4 +1,4 @@
-//! Registering `swarmterm --hook` in Claude Code's user-scope settings.
+//! Registering `swarm-agent --hook` in Claude Code's user-scope settings.
 //!
 //! Same read → merge → `.tmp` → rename policy as `statusline/install.rs` and
 //! `mcp/config.rs`, so a crash mid-write can never truncate `settings.json`.
@@ -56,11 +56,11 @@ pub fn format_command(exe: &str, windows: bool) -> String {
 }
 
 /// Does this hook `command` belong to us? Both halves must match, so our own
-/// `--statusline` entry, a bare `swarmterm`, and a stranger's `--hook` are all
+/// `--statusline` entry, a bare `swarm-agent`, and a stranger's `--hook` are all
 /// left alone.
 pub fn is_ours_hook(command: &str) -> bool {
     let c = command.trim().to_ascii_lowercase();
-    c.ends_with("--hook") && c.contains("swarmterm")
+    c.ends_with("--hook") && (c.contains("swarm-agent") || c.contains("swarmterm"))
 }
 
 /// The one group we install per event. No `matcher`: it is ignored on most of
@@ -228,8 +228,8 @@ mod tests {
     use super::*;
     use crate::hook::signal_for;
 
-    const OURS: &str = "\"/Applications/Swarmterm.app/Contents/MacOS/swarmterm\" --hook";
-    const STALE: &str = "\"/Users/me/dev/swarmterm/src-tauri/target/debug/swarmterm\" --hook";
+    const OURS: &str = "\"/Applications/SwarmAgent.app/Contents/MacOS/swarm-agent\" --hook";
+    const STALE: &str = "\"/Users/me/dev/swarm-agent/src-tauri/target/debug/swarm-agent\" --hook";
     const FOREIGN: &str = "~/.claude/notify.sh";
 
     fn parse(s: &str) -> Value {
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn quotes_the_path_and_appends_the_flag() {
         assert_eq!(
-            format_command("/Applications/Swarmterm.app/Contents/MacOS/swarmterm", false),
+            format_command("/Applications/SwarmAgent.app/Contents/MacOS/swarm-agent", false),
             OURS
         );
     }
@@ -265,16 +265,16 @@ mod tests {
         // Claude Code runs hook commands through Git Bash, which consumes
         // unquoted backslashes as escapes — same trap as the status line.
         assert_eq!(
-            format_command("C:\\Users\\me\\AppData\\Local\\Swarmterm\\swarmterm.exe", true),
-            "\"C:/Users/me/AppData/Local/Swarmterm/swarmterm.exe\" --hook"
+            format_command("C:\\Users\\me\\AppData\\Local\\SwarmAgent\\swarm-agent.exe", true),
+            "\"C:/Users/me/AppData/Local/SwarmAgent/swarm-agent.exe\" --hook"
         );
     }
 
     #[test]
     fn leaves_backslashes_alone_off_windows() {
         assert_eq!(
-            format_command("/tmp/we\\ird/swarmterm", false),
-            "\"/tmp/we\\ird/swarmterm\" --hook"
+            format_command("/tmp/we\\ird/swarm-agent", false),
+            "\"/tmp/we\\ird/swarm-agent\" --hook"
         );
     }
 
@@ -282,16 +282,16 @@ mod tests {
     fn recognises_our_own_hook_command() {
         assert!(is_ours_hook(OURS));
         assert!(is_ours_hook(STALE));
-        assert!(is_ours_hook("\"C:/x/swarmterm.exe\" --hook"));
-        assert!(is_ours_hook("/usr/local/bin/swarmterm --hook  "));
+        assert!(is_ours_hook("\"C:/x/swarm-agent.exe\" --hook"));
+        assert!(is_ours_hook("/usr/local/bin/swarm-agent --hook  "));
     }
 
     #[test]
     fn does_not_claim_a_foreign_hook_command() {
         // Both halves must match: our own --statusline entry is NOT a hook,
         // a bare binary is not ours, and a stranger's --hook is theirs.
-        assert!(!is_ours_hook("\"/Applications/Swarmterm.app/Contents/MacOS/swarmterm\" --statusline"));
-        assert!(!is_ours_hook("swarmterm"));
+        assert!(!is_ours_hook("\"/Applications/SwarmAgent.app/Contents/MacOS/swarm-agent\" --statusline"));
+        assert!(!is_ours_hook("swarm-agent"));
         assert!(!is_ours_hook("some-other-tool --hook"));
         assert!(!is_ours_hook(FOREIGN));
         assert!(!is_ours_hook(""));

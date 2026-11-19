@@ -352,13 +352,13 @@ mod tests {
         );
         std::fs::write(&file_path, content).unwrap();
 
-        let turns = parse_antigravity_transcript(&file_path, "conv-1", "/Users/test/swarmterm");
+        let turns = parse_antigravity_transcript(&file_path, "conv-1", "/Users/test/swarm-agent");
         assert_eq!(turns.len(), 1);
         let t = &turns[0];
         assert_eq!(t.turn_key, "antigravity:conv-1:step:0");
         assert_eq!(t.agent_id, "antigravity");
         assert_eq!(t.model, "Gemini 4 Argon (High)");
-        assert_eq!(t.project_path, "/Users/test/swarmterm");
+        assert_eq!(t.project_path, "/Users/test/swarm-agent");
         assert_eq!(t.input_tokens, 6000);
         assert_eq!(t.cache_tokens, 22000);
         assert_eq!(t.output_tokens, 500);

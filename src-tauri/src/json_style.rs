@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn new_file_style_is_byte_identical_to_to_string_pretty() {
-        let value = v(r#"{"mcpServers":{"swarmterm":{"type":"http","url":"u"}}}"#);
+        let value = v(r#"{"mcpServers":{"swarm-agent":{"type":"http","url":"u"}}}"#);
         let out = JsonStyle::detect(None).render(&value).unwrap();
         assert_eq!(out, serde_json::to_string_pretty(&value).unwrap());
     }

@@ -1,4 +1,4 @@
-//! One `POST /hook` to the running Swarmterm, hand-rolled over
+//! One `POST /hook` to the running SwarmAgent, hand-rolled over
 //! `std::net::TcpStream`.
 //!
 //! Same reasoning as `statusline/probe.rs`: this runs inside the `--hook` CLI,
@@ -37,7 +37,7 @@ pub fn build_request(authority: &str, token: &str, body: &str) -> String {
 /// anyway; the bool exists for tests. Deliberately `let … else` rather than `?`:
 /// there is no error to propagate, only "did the signal land".
 pub fn post_signal(mcp_url: &str, token: &str, signal: Signal, timeout: Duration) -> bool {
-    // A garbage SWARMTERM_MCP_URL is an env problem: bail before any socket work.
+    // A garbage SWARM_AGENT_MCP_URL is an env problem: bail before any socket work.
     let Some((_host, authority)) = status_addr(mcp_url) else {
         return false;
     };
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn post_signal_is_false_on_a_malformed_url() {
-        // Must bail before any socket work: a garbage SWARMTERM_MCP_URL is an
+        // Must bail before any socket work: a garbage SWARM_AGENT_MCP_URL is an
         // env problem, not something worth a connect attempt.
         assert!(!post_signal(
             "not a url",

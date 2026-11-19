@@ -6,14 +6,14 @@ use serde::Deserialize;
 /// What we can say about this pane's MCP link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpState {
-    /// Swarmterm answered and a client has called in with this pane's token.
+    /// SwarmAgent answered and a client has called in with this pane's token.
     Connected,
-    /// Swarmterm answered, the token is live, but no client ever called in —
+    /// SwarmAgent answered, the token is live, but no client ever called in —
     /// Claude did not load our config. The state this feature exists to expose.
     NoClient,
-    /// `SWARMTERM_*` env is present but the probe failed.
+    /// `SWARM_AGENT_*` env is present but the probe failed.
     Unreachable,
-    /// No `SWARMTERM_*` env — this Claude session was not spawned by Swarmterm.
+    /// No `SWARM_AGENT_*` env — this Claude session was not spawned by SwarmAgent.
     Absent,
 }
 
@@ -116,7 +116,7 @@ fn paint(s: &str, code: &str, color: bool) -> String {
 }
 
 /// Build the whole line. Two segments joined by `"  ·  "`; the `mcp` one is
-/// dropped entirely outside Swarmterm rather than rendered as a "no" — a status
+/// dropped entirely outside SwarmAgent rather than rendered as a "no" — a status
 /// line in a plain terminal should not nag about a product that isn't running.
 pub fn render(mcp: McpState, ctx: Option<CtxInfo>, color: bool) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(2);

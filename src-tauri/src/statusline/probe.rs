@@ -83,7 +83,7 @@ pub fn build_status_request(authority: &str, token: &str, ctx: Option<f64>) -> S
     )
 }
 
-/// `Some(connected)` when Swarmterm answered `200` with a well-formed body;
+/// `Some(connected)` when SwarmAgent answered `200` with a well-formed body;
 /// `None` for every failure — refused, timed out, 401 from a dead pane,
 /// malformed reply. The caller collapses `None` to `mcp ✗`, because from the
 /// status line's point of view those are the same fact: we cannot vouch for

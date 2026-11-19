@@ -1,5 +1,5 @@
 //! Isolated debug-only WKWebView benchmark. Never installs hooks, starts agents,
-//! reads their credentials, or modifies the user's Swarmterm preferences.
+//! reads their credentials, or modifies the user's SwarmAgent preferences.
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -20,7 +20,7 @@ fn finish_terminal_benchmark(
             "visible": window.is_visible().ok(), "focused": window.is_focused().ok(), "minimized": window.is_minimized().ok()
         });
     }
-    let path = std::env::var("SWARMTERM_BENCHMARK_REPORT").map_err(|e| e.to_string())?;
+    let path = std::env::var("SWARM_AGENT_BENCHMARK_REPORT").map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
     eprintln!("Terminal benchmark report: {path}");
@@ -30,11 +30,11 @@ fn finish_terminal_benchmark(
 
 pub fn run(mut context: tauri::Context<tauri::Wry>) {
     assert!(
-        std::env::var_os("SWARMTERM_BENCHMARK").is_some(),
+        std::env::var_os("SWARM_AGENT_BENCHMARK").is_some(),
         "Use npm run benchmark:terminal"
     );
     context.config_mut().app.windows.clear();
-    context.config_mut().identifier = "com.swarmterm.benchmark".into();
+    context.config_mut().identifier = "com.swarm-agent.benchmark".into();
     tauri::Builder::default()
         .manage(crate::pty::AppState::default())
         .invoke_handler(tauri::generate_handler![
@@ -48,7 +48,7 @@ pub fn run(mut context: tauri::Context<tauri::Wry>) {
             terminal_benchmark_progress,
         ])
         .setup(|app| {
-            let url = if std::env::var_os("SWARMTERM_BENCHMARK_QUICK").is_some() {
+            let url = if std::env::var_os("SWARM_AGENT_BENCHMARK_QUICK").is_some() {
                 "http://localhost:1420/?terminalBenchmark=1&quick=1"
             } else {
                 "http://localhost:1420/?terminalBenchmark=1"
@@ -58,7 +58,7 @@ pub fn run(mut context: tauri::Context<tauri::Wry>) {
                 "benchmark",
                 tauri::WebviewUrl::External(url.parse().unwrap()),
             )
-            .title("Swarmterm — Terminal benchmark")
+            .title("SwarmAgent — Terminal benchmark")
             .inner_size(1200.0, 900.0)
             .visible(true)
             .focused(true)

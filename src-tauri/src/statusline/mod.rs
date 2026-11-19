@@ -1,4 +1,4 @@
-//! The `swarmterm --statusline` command: Claude Code runs it and renders the
+//! The `swarm-agent --statusline` command: Claude Code runs it and renders the
 //! single line it prints below the input box.
 
 pub mod install;
@@ -67,8 +67,8 @@ pub fn run_cli() {
     let ctx = ctx_of(&stdin);
     let pct = ctx.map(|c| c.pct);
 
-    let url = std::env::var("SWARMTERM_MCP_URL").ok();
-    let token = std::env::var("SWARMTERM_SESSION").ok();
+    let url = std::env::var("SWARM_AGENT_MCP_URL").ok();
+    let token = std::env::var("SWARM_AGENT_SESSION").ok();
     let mcp = mcp_state(url.as_deref(), token.as_deref(), |u, t| {
         probe::probe(u, t, pct, PROBE_TIMEOUT)
     });

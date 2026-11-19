@@ -94,8 +94,8 @@ mod tests {
     #[test]
     fn encode_replaces_every_non_alphanumeric_with_dash() {
         assert_eq!(
-            encode_project_dir("/Users/me/Projects/swarmterm"),
-            "-Users-me-Projects-swarmterm"
+            encode_project_dir("/Users/me/Projects/swarm-agent"),
+            "-Users-me-Projects-swarm-agent"
         );
         assert_eq!(
             encode_project_dir("C:\\Users\\me\\proj"),

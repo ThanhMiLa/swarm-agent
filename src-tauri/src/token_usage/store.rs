@@ -269,7 +269,7 @@ pub fn default_cache_path(app: &tauri::AppHandle) -> PathBuf {
         .map(|d| d.join(CACHE_FILE_NAME))
         .unwrap_or_else(|| {
             super::home_dir()
-                .map(|h| h.join(".swarmterm").join(CACHE_FILE_NAME))
+                .map(|h| h.join(".swarm-agent").join(CACHE_FILE_NAME))
                 .unwrap_or_else(|| PathBuf::from(CACHE_FILE_NAME))
         })
 }
