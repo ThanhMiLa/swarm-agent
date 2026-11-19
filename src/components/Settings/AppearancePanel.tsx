@@ -28,7 +28,7 @@ export function AppearancePanel(): ReactElement {
           Appearance
         </h1>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
-          Customise how Swarmterm looks — applied across the sidebar, workspace tabs,
+          Customise how SwarmAgent looks — applied across the sidebar, workspace tabs,
           and every terminal pane.
         </p>
       </section>
@@ -91,7 +91,7 @@ function ThemeCard({ option, active, onSelect }: ThemeCardProps): ReactElement {
   )
 }
 
-/** A miniature terminal pane showing what swarmterm looks like in this style. */
+/** A miniature terminal pane showing what swarm-agent looks like in this style. */
 function TerminalPreview({
   active,
   styleId
@@ -127,7 +127,7 @@ function TerminalPreview({
       >
         <div>
           <span className="text-muted-foreground/60">$</span>
-          <span className={cn('ml-1.5', isBlack ? 'text-white' : 'text-foreground/85')}>swarmterm</span>
+          <span className={cn('ml-1.5', isBlack ? 'text-white' : 'text-foreground/85')}>swarm-agent</span>
         </div>
         <div className="text-muted-foreground">
           <span className={cn(isBlack ? 'text-white/80' : 'text-foreground/70')}>●</span> session ready

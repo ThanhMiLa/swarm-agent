@@ -74,7 +74,7 @@ function MacInputCompatibilitySetting(): ReactElement {
           </h2>
           <p id="input-compatibility-description" className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Use this if Vietnamese accents disappear while typing with OpenKey.
-            Applies to text fields throughout Swarmterm.
+            Applies to text fields throughout SwarmAgent.
           </p>
         </div>
         <button

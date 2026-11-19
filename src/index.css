@@ -28,7 +28,7 @@
     --pane-border: 0 0% 25%;
     --input: 0 0% 19%;
     --ring: 206 100% 42%;
-    --broadcast: 174 62% 47%;   /* teal accent for broadcast-group panes */
+    --workspace-sidebar-width: 14rem;
     --activity: 48 96% 53%;     /* yellow: a terminal is actively producing output */
     --radius: 0.5rem;
 
@@ -65,7 +65,6 @@
     --pane-border: 0 0% 23.1%;   /* #3b3b3b: seam-split */
     --input: 0 0% 10.6%;         /* #1b1b1b: chrome-1 */
     --ring: 221 100% 71.8%;      /* #6f9cff: Deck accent */
-    --broadcast: 191 61.7% 62.2%; /* #63c5da: Deck cyan */
     --activity: 39 67.1% 69%;    /* #e5c07b: Deck yellow */
     --radius: 0.5rem;
   }

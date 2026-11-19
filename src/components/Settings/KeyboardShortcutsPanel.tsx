@@ -14,7 +14,7 @@ export function KeyboardShortcutsPanel(): ReactElement {
           Keyboard Shortcuts
         </h1>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
-          Default keybindings for Swarmterm. Shortcuts cannot be rebound yet.
+          Default keybindings for SwarmAgent. Shortcuts cannot be rebound yet.
         </p>
       </section>
 

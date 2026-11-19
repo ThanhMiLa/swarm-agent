@@ -118,7 +118,7 @@ export function Navbar({ onNewWorkspace, settingsOpen, onToggleSettings }: Navba
       // Anything that legitimately claims focus (the rename input, a dropdown,
       // the Settings dialog) is exempt by lib/terminal-focus.ts's own check.
       data-focus-return
-      style={{ width: visible ? 224 : 0 }}
+      style={{ width: visible ? 'var(--workspace-sidebar-width)' : 0 }}
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === 'width') endLayoutTransition(layoutTransition.current)
       }}
@@ -128,7 +128,7 @@ export function Navbar({ onNewWorkspace, settingsOpen, onToggleSettings }: Navba
       )}
     >
       <div className={cn(
-        'flex h-full w-56 flex-col transition-[transform,opacity] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-[transform,opacity] motion-reduce:transition-none',
+        'flex h-full w-[var(--workspace-sidebar-width)] flex-col transition-[transform,opacity] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-[transform,opacity] motion-reduce:transition-none',
         visible ? 'translate-x-0 opacity-100' : '-translate-x-4 opacity-0'
       )}>
         <div className="flex min-h-0 flex-1 flex-col">

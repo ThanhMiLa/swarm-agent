@@ -4,7 +4,7 @@ import { formatDroppedPaths, dropPointToCss } from '@/lib/terminal-drop'
 import { isMacPlatform } from '@/lib/platform'
 import { focusTerminal, pasteIntoTerminal } from '@/lib/terminal-registry'
 import { useAppStore } from '@/store/app-store'
-import type { ShellFlavor } from '@/lib/agent-spawn-command'
+import type { ShellFlavor } from '@/lib/shell-quoting'
 
 /** The pane under a drop point, resolved from the DOM contract in TerminalPane. */
 interface DropPane {
@@ -48,16 +48,13 @@ export function FileDropListener(): ReactElement | null {
 
       setDropTarget(null)
       const target = paneAt(event.position)
-      // Dropped outside any pane (navbar, preview column, Welcome): do nothing
+      // Dropped outside any pane (sidebar, Agent Team, Welcome): do nothing
       // rather than guess at the focused pane and type into the wrong shell.
       if (!target) return
 
       const text = formatDroppedPaths(event.paths, target.flavor)
       if (text === '') return
 
-      // Paste rather than write: this routes through the registry's onData, so
-      // when broadcast is armed the path lands in every selected pane, matching
-      // what typing does.
       pasteIntoTerminal(target.terminalId, text)
       setFocusedLeaf(target.leafId)
       focusTerminal(target.terminalId)

@@ -3,7 +3,6 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { LayoutNode, LeafNode } from '@/lib/layout-tree'
 import { useAppStore, type Workspace as WorkspaceModel } from '@/store/app-store'
 import { TerminalPane } from '@/components/TerminalPane/TerminalPane'
-import { BroadcastBanner } from '@/components/Workspace/BroadcastBanner'
 import { AgentIcon } from '@/components/AgentIcon'
 import { templateById, DEFAULT_TEMPLATE_ID } from '@/lib/templates'
 import { cn } from '@/lib/utils'
@@ -24,11 +23,7 @@ export function Workspace({ workspace }: WorkspaceProps): ReactElement {
           leaf={node}
           cwd={workspace.cwd}
           isFocused={node.id === workspace.focusedLeafId}
-          broadcastActive={workspace.broadcastActive}
-          isBroadcastMember={
-            workspace.broadcastActive && workspace.broadcastLeafIds.includes(node.id)
-          }
-          worktreeMode={workspace.worktreeMode}
+          workspaceId={workspace.id}
         />
       )
     }
@@ -70,7 +65,6 @@ export function Workspace({ workspace }: WorkspaceProps): ReactElement {
   // back to the focused terminal — see lib/terminal-focus.ts.
   return (
     <div data-focus-return className="flex h-full w-full flex-col bg-canvas">
-      <BroadcastBanner workspace={workspace} />
       <div className="min-h-0 flex-1 p-2">{renderNode(workspace.layout)}</div>
     </div>
   )

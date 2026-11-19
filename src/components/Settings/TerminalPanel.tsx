@@ -9,6 +9,7 @@ import {
   LINE_HEIGHT_MAX,
   customFontStack,
   primaryFamily,
+  probeTerminalFonts,
   type TerminalTextPref
 } from '@/lib/terminal-text'
 import { useTerminalPrefStore } from '@/store/terminal-pref-store'
@@ -137,7 +138,7 @@ function StatusLineSettings(): ReactElement {
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-foreground">Agent status line</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Shows whether Claude Code reached Swarmterm&rsquo;s MCP server, plus the
+          Shows whether Claude Code reached SwarmAgent&rsquo;s MCP server, plus the
           session&rsquo;s context usage, under the prompt in every Claude pane.
         </p>
       </div>
@@ -280,9 +281,19 @@ function TextSettings(): ReactElement {
   const matched = MONO_FONTS.find((f) => f.stack === text.fontFamily)
   const [customMode, setCustomMode] = useState(!matched)
   const [customDraft, setCustomDraft] = useState(matched ? '' : primaryFamily(text.fontFamily))
+  const [availability, setAvailability] = useState(() => new Map<string, boolean>())
 
   const isCustom = customMode || !matched
   const selectValue = isCustom ? 'custom' : matched!.id
+  const probeStack = matched?.probeStack ?? text.fontFamily
+  const fontUnavailable = availability.get(probeStack) === false
+
+  useEffect(() => {
+    const stacks = MONO_FONTS.filter((font) => font.id !== 'system')
+      .map((font) => font.probeStack ?? font.stack)
+    if (!matched) stacks.push(text.fontFamily)
+    setAvailability(probeTerminalFonts(stacks))
+  }, [matched, text.fontFamily])
 
   function onSelectFont(id: string): void {
     if (id === 'custom') {
@@ -332,12 +343,15 @@ function TextSettings(): ReactElement {
               onChange={(e) => onSelectFont(e.target.value)}
               className="w-full rounded-md border border-pane-border bg-card px-2.5 py-1.5 text-sm text-foreground"
             >
-              {MONO_FONTS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label} · {f.platform}
-                  {f.ligatures ? ' · ligatures' : ''}
-                </option>
-              ))}
+              {MONO_FONTS.map((font) => {
+                const unavailable = availability.get(font.probeStack ?? font.stack) === false
+                return (
+                  <option key={font.id} value={font.id} disabled={unavailable}>
+                    {font.label} · {unavailable ? 'Unavailable' : font.platform}
+                    {!unavailable && font.ligatures ? ' · ligatures' : ''}
+                  </option>
+                )
+              })}
               <option value="custom">Custom…</option>
             </select>
           </label>
@@ -350,6 +364,12 @@ function TextSettings(): ReactElement {
               onChange={(e) => onCustomChange(e.target.value)}
               className="w-full rounded-md border border-pane-border bg-card px-2.5 py-1.5 text-sm text-foreground"
             />
+          )}
+
+          {fontUnavailable && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {matched?.label ?? primaryFamily(text.fontFamily)} is unavailable. Using a fallback font.
+            </p>
           )}
 
           <Stepper

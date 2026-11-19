@@ -2,27 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, RotateCw } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import type { LeafNode } from '@/lib/layout-tree'
-import { collectLeaves } from '@/lib/layout-tree'
-import { useAppStore, type ClearTarget } from '@/store/app-store'
+import { useAppStore } from '@/store/app-store'
 import { useTerminalPrefStore } from '@/store/terminal-pref-store'
 import { useTerminalTitleStore } from '@/store/terminal-title-store'
 import { useTerminalSearchStore } from '@/store/terminal-search-store'
 import { useContextUsageStore } from '@/store/context-usage-store'
 import { Button } from '@/components/ui/button'
-import { HeldDeliveryPill } from '@/components/TerminalPane/HeldDeliveryPill'
 import { SearchOverlay } from '@/components/TerminalPane/SearchOverlay'
 import { PaneHeader } from './PaneHeader'
-import {
-  ContextMenu,
-  ContextMenuTrigger,
-  ContextMenuContent,
-  ContextMenuItem,
-} from '@/components/ui/context-menu'
-import { ClearWorktreeDialog, type DialogTarget } from '@/components/Workspace/ClearWorktreeDialog'
-import { getChangedFiles, branchUnmergedCount } from '@/tauri/git'
-import { classifyWorktree, clearWorktreeMenuLabel } from '@/lib/worktree-cleanup'
-import { agentCommand, DEFAULT_TEMPLATE_ID, templateById } from '@/lib/templates'
-import { buildAgentSpawnCommand, shellFlavor } from '@/lib/agent-spawn-command'
+import { agentCommand, DEFAULT_TEMPLATE_ID } from '@/lib/templates'
+import { shellFlavor } from '@/lib/shell-quoting'
 import { buildResumeCommand } from '@/lib/resume-command'
 import { isWindowsPlatform } from '@/lib/platform'
 import { pickDirectory } from '@/tauri/dialog'
@@ -43,12 +32,7 @@ interface TerminalPaneProps {
   /** Working directory the terminal's shell starts in. */
   cwd: string
   isFocused: boolean
-  /** Whether broadcast mode is armed for this workspace. */
-  broadcastActive: boolean
-  /** Whether this pane is in the broadcast group. */
-  isBroadcastMember: boolean
-  /** Whether the workspace exposes MCP worktree tools to every terminal. */
-  worktreeMode: boolean
+  workspaceId: string
 }
 
 /**
@@ -62,20 +46,16 @@ export function TerminalPane({
   leaf,
   cwd,
   isFocused,
-  broadcastActive,
-  isBroadcastMember,
-  worktreeMode
+  workspaceId
 }: TerminalPaneProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const splitPane = useAppStore((s) => s.splitPane)
   const closePane = useAppStore((s) => s.closePane)
   const setFocusedLeaf = useAppStore((s) => s.setFocusedLeaf)
-  const toggleBroadcastMember = useAppStore((s) => s.toggleBroadcastMember)
   const setPaneAgent = useAppStore((s) => s.setPaneAgent)
   const setPaneCwd = useAppStore((s) => s.setPaneCwd)
   const setPaneShell = useAppStore((s) => s.setPaneShell)
-  const clearWorktrees = useAppStore((s) => s.clearWorktrees)
   const globalShellId = useTerminalPrefStore((s) => s.shellId)
   const isDropTarget = useAppStore((s) => s.dropTargetTerminalId === leaf.terminalId)
 
@@ -116,25 +96,9 @@ export function TerminalPane({
   const resolvedShellId = leaf.shellId ?? globalShellId
   const resolvedAgentId = leaf.agentId ?? DEFAULT_TEMPLATE_ID
   const baseCommand = agentCommand(resolvedAgentId)
-  // A resume pane re-enters a session the CLI recorded on disk; the resume
-  // line wins over the worker-brief path (a resume leaf never carries
-  // initialPrompt — see createWorkspace).
-  const resumeCommand =
-    leaf.resumeSessionId !== undefined
-      ? buildResumeCommand(resolvedAgentId, leaf.resumeSessionId)
-      : undefined
-  // Worker panes carry a one-shot task brief; quote it for the shell the pty
-  // actually types into (initialCommand is a typed line, not an exec).
-  const resolvedCommand =
-    resumeCommand ??
-    (baseCommand !== undefined && leaf.initialPrompt !== undefined
-      ? buildAgentSpawnCommand(
-          baseCommand,
-          leaf.initialPrompt,
-          shellFlavor(resolvedShellId, isWindowsPlatform()),
-          templateById(resolvedAgentId).spawnPromptFlag
-        )
-      : baseCommand)
+  const resolvedCommand = (leaf.resumeSessionId
+    ? buildResumeCommand(resolvedAgentId, leaf.resumeSessionId)
+    : undefined) ?? baseCommand
   // Published to the DOM so the app-level file-drop listener can quote paths
   // for this pane's shell without re-deriving the resolution chain.
   const paneShellFlavor = shellFlavor(resolvedShellId, isWindowsPlatform())
@@ -152,8 +116,7 @@ export function TerminalPane({
       cwd: resolvedCwd,
       shellId: resolvedShellId,
       initialCommand: resolvedCommand,
-      worktreeMode: worktreeMode || undefined,
-      repoRoot: worktreeMode ? cwd : undefined,
+      workspaceId,
       agentId: resolvedAgentId
     })
     setStatus(getTerminalStatus(terminalId))
@@ -197,14 +160,13 @@ export function TerminalPane({
       cwd: resolvedCwd,
       shellId: resolvedShellId,
       initialCommand: resolvedCommand,
-      worktreeMode: worktreeMode || undefined,
-      repoRoot: worktreeMode ? cwd : undefined,
+      workspaceId,
       agentId: resolvedAgentId
     })
     // A same-id respawn (agent/cwd/shell switch) starts a new session; the old
     // agent's title no longer describes it. Clear it — the new agent re-titles.
     useTerminalTitleStore.getState().clearTitle(terminalId)
-  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, resolvedAgentId])
+  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, resolvedAgentId, workspaceId])
 
   // Pull keyboard focus into xterm when this pane becomes the focused one.
   useEffect(() => {
@@ -216,73 +178,10 @@ export function TerminalPane({
     if (dir) setPaneCwd(leafId, dir)
   }
 
-  const [dialog, setDialog] = useState<{ targets: DialogTarget[]; clears: ClearTarget[] } | null>(null)
-  // Lazily computed when the context menu opens (see the ContextMenu wrapper
-  // below) rather than on every render of every pane.
-  const [menuTargetCount, setMenuTargetCount] = useState(0)
-
-  // Resolve which panes this action targets: the broadcast group if THIS leaf is
-  // in it, else just this pane — then keep only panes bound to a worktree.
-  function resolveWorktreeTargets(): ClearTarget[] {
-    const st = useAppStore.getState()
-    const ws = st.workspaces.find((w) => w.id === st.activeWorkspaceId)
-    if (!ws) return []
-    const inGroup = ws.broadcastLeafIds.includes(leafId)
-    const leaves = collectLeaves(ws.layout).filter((l) =>
-      inGroup ? ws.broadcastLeafIds.includes(l.id) : l.id === leafId
-    )
-    return leaves
-      .filter((l) => l.worktreeBranch !== undefined && l.cwd !== undefined)
-      .map((l) => ({
-        leafId: l.id,
-        terminalId: l.terminalId,
-        path: l.cwd as string,
-        branch: l.worktreeBranch as string,
-        repoRoot: ws.cwd
-      }))
-  }
-
-  async function openClearDialog(): Promise<void> {
-    const clears = resolveWorktreeTargets()
-    if (clears.length === 0) return
-    const targets: DialogTarget[] = await Promise.all(
-      clears.map(async (c) => {
-        try {
-          const changed = await getChangedFiles(c.path)
-          const unmerged = await branchUnmergedCount(c.repoRoot, c.branch)
-          const { uncommittedCount, unmergedCount, dirty } = classifyWorktree(changed, unmerged)
-          return { leafId: c.leafId, branch: c.branch, uncommittedCount, unmergedCount, dirty }
-        } catch (e) {
-          // An uninspectable worktree is treated as having unsaved work so it is
-          // protected (unchecked), never silently auto-removed.
-          console.warn(`inspect worktree failed for ${c.branch}:`, e)
-          return { leafId: c.leafId, branch: c.branch, uncommittedCount: 0, unmergedCount: 0, dirty: true }
-        }
-      })
-    )
-    setDialog({ targets, clears })
-  }
-
-  function confirmClear(approvedLeafIds: string[]): void {
-    if (!dialog) return
-    const approved = dialog.clears.filter((c) => approvedLeafIds.includes(c.leafId))
-    void clearWorktrees(approved)
-    setDialog(null)
-  }
-
-  const pane = (
+  return (
     <div
       ref={setPaneRef}
-      onMouseDown={(e) => {
-        // Alt+Click adds/removes this pane from the broadcast group instead of
-        // focusing it. Ctrl/Cmd is avoided — xterm's WebLinks addon uses it.
-        if (e.altKey) {
-          e.preventDefault()
-          toggleBroadcastMember(leafId)
-          return
-        }
-        setFocusedLeaf(leafId)
-      }}
+      onMouseDown={() => setFocusedLeaf(leafId)}
       // Clicking pane chrome (header, borders) blurs xterm; App.tsx returns the
       // keyboard to the terminal on the way back up (lib/terminal-focus.ts).
       data-focus-return
@@ -291,13 +190,7 @@ export function TerminalPane({
       data-shell-flavor={paneShellFlavor}
       className={cn(
         'flex h-full w-full flex-col overflow-hidden rounded-md border bg-background',
-        isFocused
-          ? 'border-ring'
-          : isBroadcastMember
-            ? 'border-broadcast'
-            : 'border-pane-border',
-        // Dim non-members while the mode is on, so the group reads at a glance.
-        broadcastActive && !isBroadcastMember && 'opacity-60',
+        isFocused ? 'border-ring' : 'border-pane-border',
         // Drop-target ring while another pane is dragged over this one.
         isOver && !isDragging && 'ring-2 ring-inset ring-ring',
         // OS file drag hovering this pane — same affordance as the pane-reorder
@@ -319,28 +212,16 @@ export function TerminalPane({
         onSplitRight={() => splitPane(leafId, 'horizontal')}
         onSplitDown={() => splitPane(leafId, 'vertical')}
         onClose={() => closePane(leafId)}
-        broadcastActive={broadcastActive}
-        isBroadcastMember={isBroadcastMember}
-        onToggleBroadcast={() => toggleBroadcastMember(leafId)}
         dragHandleRef={setActivatorNodeRef}
         dragListeners={dragListeners}
         dragAttributes={dragAttributes}
-        worktreeBranch={leaf.worktreeBranch}
         agentTitle={agentTitle}
         ctxPct={ctxPct}
-      />
-
-      <ClearWorktreeDialog
-        open={dialog !== null}
-        targets={dialog?.targets ?? []}
-        onConfirm={confirmClear}
-        onClose={() => setDialog(null)}
       />
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={containerRef} className="absolute inset-0" />
 
-        <HeldDeliveryPill terminalId={terminalId} />
         {searchOpen && <SearchOverlay terminalId={terminalId} />}
 
         {status.kind === 'error' && (
@@ -363,22 +244,6 @@ export function TerminalPane({
     </div>
   )
 
-  // Right-click anywhere in the pane (header or the terminal body) opens the
-  // context menu — the whole pane is the trigger, not just the header. xterm
-  // doesn't use right-click, so capturing it here steals no terminal action.
-  return (
-    <ContextMenu onOpenChange={(open) => { if (open) setMenuTargetCount(resolveWorktreeTargets().length) }}>
-      <ContextMenuTrigger asChild>{pane}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem
-          disabled={menuTargetCount === 0}
-          onSelect={() => void openClearDialog()}
-        >
-          {clearWorktreeMenuLabel(menuTargetCount)}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  )
 }
 
 interface StatusOverlayProps {

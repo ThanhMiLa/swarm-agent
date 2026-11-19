@@ -32,8 +32,7 @@ interface SessionsDialogProps {
  * the dialog is a bigger window onto the same selection, never a second one.
  * The rail filter is deliberately dialog-local: the shared-state variant left
  * the composer section unexpectedly filtered after the dialog closed.
- * Hand-rolled overlay per ClearWorktreeDialog; role="dialog" is what
- * overlay-watch and terminal-focus key on, so both cover it for free.
+ * The dialog role tells terminal-focus to keep keyboard focus here.
  */
 export function SessionsDialog({
   open,

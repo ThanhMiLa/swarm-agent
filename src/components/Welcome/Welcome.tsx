@@ -14,9 +14,7 @@ import { AgentIcon } from '@/components/AgentIcon'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pickDirectory, getHomeDir } from '@/tauri/dialog'
-import { listWorktrees, createWorktree, ensureRepoWithCommit } from '@/tauri/git'
 import { listAgentSessions } from '@/tauri/sessions'
-import { planWorktreeBranches, provisionWorktrees } from '@/lib/worktree-naming'
 import { folderName, VISIBLE_RECENT_ROWS } from '@/lib/recent-folders'
 import { useRecentsStore } from '@/store/recents-store'
 import { visibleSlice, hiddenCount } from '@/lib/list-paging'
@@ -62,9 +60,6 @@ export function Welcome(): ReactElement {
   const [counts, setCounts] = useState<Record<string, number>>({ 'claude-code': 1 })
   const seededRef = useRef(false)
 
-  const [isolateWorktrees, setIsolateWorktrees] = useState(false)
-  const [isGitRepo, setIsGitRepo] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [sessions, setSessions] = useState<AgentSessionEntry[]>([])
   const [tickedSessions, setTickedSessions] = useState<ReadonlySet<string>>(new Set())
@@ -113,35 +108,6 @@ export function Welcome(): ReactElement {
 
   const trimmedFolder = folder.trim()
   const canCreate = trimmedFolder !== ''
-
-  // Probe whether the chosen folder is inside a git repo. list returns []
-  // for non-repos and for the home-dir guard.
-  useEffect(() => {
-    if (trimmedFolder === '') {
-      setIsGitRepo(false)
-      return
-    }
-    let cancelled = false
-    void listWorktrees(trimmedFolder)
-      .then((trees) => {
-        if (cancelled) return
-        // A repo with an unborn HEAD (fresh `git init`, zero commits) lists
-        // its main worktree with an all-zero head. `git worktree add` cannot
-        // check out from an unborn HEAD, so we disable this feature until
-        // the repo has at least one commit.
-        const main = trees.find((t) => t.isMain)
-        const unborn = main !== undefined && /^0+$/.test(main.head)
-        setIsGitRepo(trees.length > 0 && !unborn)
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsGitRepo(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [trimmedFolder])
 
   // Resume suggestions for the chosen folder. Fail-open: any error or a
   // slow scan just means the section doesn't render — Create is never gated.
@@ -192,49 +158,10 @@ export function Welcome(): ReactElement {
   const maxTiles = TERMINAL_COUNTS[TERMINAL_COUNTS.length - 1] // 12
   const canTickMore = totalPaneCount < maxTiles
 
-  const submit = async (): Promise<void> => {
-    // isSubmitting guards against a second Create click (or a duplicate
-    // Ctrl+Enter) firing while worktree provisioning is still in flight —
-    // without it, a slow `git worktree add` could be kicked off twice for
-    // the same plan, racing two workspaces into existence.
-    if (!canCreate || isSubmitting) return
-    setIsSubmitting(true)
-    try {
-      addRecentFolder(trimmedFolder)
-
-      const isolate = isolateWorktrees
-      let paneWorktrees: ({ path: string; branch: string } | null)[] | undefined
-
-      if (isolate) {
-        try {
-          // Auto-initialize git if folder is not a repo and has no commits
-          await ensureRepoWithCommit(trimmedFolder)
-        } catch (err) {
-          setIsSubmitting(false)
-          console.error('failed to initialize git repo:', err)
-          return
-        }
-
-        // Provision isolation BEFORE the workspace exists: leaves are born inside
-        // their worktrees, so no pane ever runs on the main checkout by accident
-        // (v2 spec — the toggle is a guarantee, not a suggestion to the agent).
-        const plan = planWorktreeBranches(agentIds)
-        paneWorktrees = await provisionWorktrees(plan, (name) =>
-          createWorktree(trimmedFolder, name)
-        )
-      }
-
-      createWorkspace({
-        cwd: trimmedFolder,
-        terminalCount,
-        agentIds,
-        worktreeMode: isolate,
-        paneWorktrees,
-        resumePanes: resumePanes.length > 0 ? resumePanes : undefined
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
+  function submit(): void {
+    if (!canCreate) return
+    addRecentFolder(trimmedFolder)
+    createWorkspace({ cwd: trimmedFolder, terminalCount, agentIds, resumePanes })
   }
 
   // Document-level Ctrl/⌘+Enter shortcut — fires even when nothing in the
@@ -249,7 +176,7 @@ export function Welcome(): ReactElement {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [trimmedFolder, terminalCount, counts, isolateWorktrees, isGitRepo, isSubmitting, tickedSessions, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trimmedFolder, terminalCount, counts, tickedSessions, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build caption: "4 panes · 2×2 · 2 AI agents · 2 Terminals"
   const aiCount = agentIds.filter((id) => id !== DEFAULT_TEMPLATE_ID).length
@@ -269,7 +196,7 @@ export function Welcome(): ReactElement {
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center px-10 py-6">
       <header className="mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Swarmterm</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">SwarmAgent</h1>
         <p className="mt-1 text-base text-muted-foreground">Run many terminals, side by side.</p>
       </header>
 
@@ -303,7 +230,7 @@ export function Welcome(): ReactElement {
 
           {/* Recent folders — inline list capped at VISIBLE_RECENT_ROWS;
               "Show all" opens the searchable pick-one dialog over the full
-              list (the title-bar search dropdown stays for quick picks). */}
+              list. */}
           {visibleRecents.length > 0 && (
             <div className="mt-5">
               <p className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -602,39 +529,14 @@ export function Welcome(): ReactElement {
             </div>
           )}
 
-          {/* Worktree isolation — enables the MCP worktree tools per workspace */}
-          <label
-            className={cn(
-              'mb-3 flex cursor-pointer items-start gap-2',
-              !isGitRepo && 'cursor-not-allowed opacity-50'
-            )}
-            title={isGitRepo ? undefined : 'Will auto-initialize git when you create'}
-          >
-            <input
-              type="checkbox"
-              disabled={false}
-              checked={isolateWorktrees}
-              onChange={(e) => setIsolateWorktrees(e.target.checked)}
-              className="mt-0.5 accent-current"
-            />
-            <span>
-              <span className="block text-sm font-medium text-foreground">
-                Isolate features in git worktrees
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Each agent pane starts in its own worktree and branch.
-              </span>
-            </span>
-          </label>
-
           {/* Create workspace button */}
           <div className="mt-auto">
             <Button
               className="w-full"
               onClick={() => void submit()}
-              disabled={!canCreate || isSubmitting}
+              disabled={!canCreate}
             >
-              {isSubmitting ? 'Creating worktrees…' : 'Create workspace'}
+              Create workspace
             </Button>
             <p className="mt-2 text-center text-xs text-muted-foreground">
               {canCreate ? 'Press ⌘↵ / Ctrl+↵ to create' : 'Choose a working folder to continue'}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Folder, Terminal as ShellIcon, Check, Columns2, Rows2, Radio, X, GitBranch } from 'lucide-react'
+import { Folder, Terminal as ShellIcon, Check, Columns2, Rows2, X } from 'lucide-react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { AgentIcon } from '@/components/AgentIcon'
 import { Button } from '@/components/ui/button'
@@ -36,18 +36,10 @@ interface PaneHeaderProps {
   onSplitRight: () => void
   onSplitDown: () => void
   onClose: () => void
-  /** Whether broadcast mode is armed for this workspace. */
-  broadcastActive: boolean
-  /** Whether this pane is in the broadcast group. */
-  isBroadcastMember: boolean
-  /** Toggle this pane's membership in the broadcast group. */
-  onToggleBroadcast: () => void
   /** dnd-kit draggable wiring — makes the header bar the grab handle for swap-DnD. */
   dragHandleRef: (element: HTMLElement | null) => void
   dragListeners: DraggableSyntheticListeners
   dragAttributes: DraggableAttributes
-  /** Branch of the bound git worktree, shown as a chip; absent for normal panes. */
-  worktreeBranch?: string
   /** Context-window % from Claude Code's status line (S15); absent ⇒ no chip. */
   ctxPct?: number
 }
@@ -66,11 +58,11 @@ const CTX_BAND_CLASS: Record<ContextBand, string> = {
 /**
  * The per-pane header. Priority-ordered and responsive: the title (agent-set or
  * agent-name fallback) is the star and soaks up free space, while folder / shell
- * / worktree chips collapse to icons as the pane narrows — see
+ * chips collapse to icons as the pane narrows — see
  * `resolveHeaderLevel`. A ResizeObserver on the header row drives the level.
  */
 export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
-  const { agentId, shellId, resolvedCwd, hasCwdOverride, worktreeBranch, ctxPct } = props
+  const { agentId, shellId, resolvedCwd, hasCwdOverride, ctxPct } = props
   const agent = templateById(agentId)
   const agentLabel = agent.name
   const shellLabel = KNOWN_SHELLS.find((s) => s.id === shellId)?.label ?? KNOWN_SHELLS[0].label
@@ -81,13 +73,13 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
   // Title: agent-supplied wins; otherwise the agent name so the slot is never
   // blank. Tooltip carries the full title + full branch (both may be truncated).
   const displayTitle = resolvePaneTitle(agentId, props.agentTitle)
-  const titleTooltip = worktreeBranch ? `${displayTitle} — ${worktreeBranch}` : displayTitle
+  const titleTooltip = displayTitle
 
   // Measure the header row and resolve which chips render at full detail. Start
   // wide so the first paint isn't over-collapsed before the observer fires.
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [level, setLevel] = useState<HeaderLevel>(() =>
-    resolveHeaderLevel(9999, Boolean(worktreeBranch))
+    resolveHeaderLevel(9999)
   )
   useEffect(() => {
     const el = rootRef.current
@@ -97,17 +89,16 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
       // Bail out to the same object when the resolved level is unchanged —
       // otherwise every resize tick during a divider drag re-renders the header.
       setLevel((prev) => {
-        const next = resolveHeaderLevel(width, Boolean(worktreeBranch))
+        const next = resolveHeaderLevel(width)
         return prev.showFolderPath === next.showFolderPath &&
-          prev.showShellLabel === next.showShellLabel &&
-          prev.worktree === next.worktree
+          prev.showShellLabel === next.showShellLabel
           ? prev
           : next
       })
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [worktreeBranch])
+  }, [])
 
   // Compose the dnd activator ref with our measure ref — the header row is both
   // the drag handle and the element we size against.
@@ -229,21 +220,6 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
         </DropdownMenu>
       </div>
 
-      {/* Worktree — lowest priority: full name → truncated → icon-only → hidden. */}
-      {worktreeBranch && level.worktree !== 'hidden' && (
-        <span
-          title={`Worktree branch: ${worktreeBranch}`}
-          className="flex min-w-0 items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground"
-        >
-          <GitBranch className="h-3 w-3 shrink-0" />
-          {level.worktree !== 'icon' && (
-            <span className={cn('truncate', level.worktree === 'name-trunc' ? 'max-w-[5rem]' : 'max-w-[10rem]')}>
-              {worktreeBranch}
-            </span>
-          )}
-        </span>
-      )}
-
       {/* Context usage — Claude Code's own status-line number mirrored into the
           chrome. Rides the folder-path threshold so narrow panes stay exactly as
           they were; tabular-nums so the width does not jitter every turn. */}
@@ -261,23 +237,6 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
 
       {/* Actions — unchanged cluster, far right. */}
       <div className="flex items-center gap-0.5" data-no-dnd>
-        {props.broadcastActive && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Toggle broadcast membership"
-            aria-pressed={props.isBroadcastMember}
-            title={
-              props.isBroadcastMember
-                ? 'In broadcast group — click to remove'
-                : 'Add to broadcast group'
-            }
-            onClick={props.onToggleBroadcast}
-            className={cn(props.isBroadcastMember && 'text-broadcast')}
-          >
-            <Radio className="h-3.5 w-3.5" />
-          </Button>
-        )}
         <Button variant="ghost" size="icon-sm" title="Split right" aria-label="Split right" onClick={props.onSplitRight}>
           <Columns2 className="h-3.5 w-3.5" />
         </Button>

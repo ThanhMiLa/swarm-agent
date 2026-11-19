@@ -17,7 +17,7 @@ interface RecentsDialogProps {
  * Working-folder field and closes. Recents live in the global store (not
  * per-folder props) so removal here updates the composer list and the
  * title-bar dropdown alike. Hand-rolled overlay per SessionsDialog;
- * role="dialog" is what overlay-watch and terminal-focus key on.
+ * role="dialog" is what terminal-focus key on.
  */
 export function RecentsDialog({ open, onClose, onPick }: RecentsDialogProps): ReactElement | null {
   const recents = useRecentsStore((s) => s.recents)

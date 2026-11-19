@@ -70,12 +70,12 @@ export function NotificationsPanel(): ReactElement {
         </h1>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
           When a background agent pane needs your input or finishes — or a plain Terminal pane
-          finishes a command that ran over 10 s — Swarmterm plays a short chime — and shows a
+          finishes a command that ran over 10 s — SwarmAgent plays a short chime — and shows a
           system notification if the window is unfocused.
         </p>
         <div className="mt-4">
           <ToggleRow label="Sound" description="Chime when a background pane blocks or finishes." checked={prefs.sound} onChange={setSound} />
-          <ToggleRow label="System notifications" description="Only shown while the Swarmterm window is unfocused." checked={prefs.system} onChange={setSystem} />
+          <ToggleRow label="System notifications" description="Only shown while the SwarmAgent window is unfocused." checked={prefs.system} onChange={setSystem} />
         </div>
       </section>
 

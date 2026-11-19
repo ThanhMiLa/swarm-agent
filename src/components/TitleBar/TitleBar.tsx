@@ -6,7 +6,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Radio,
   Square,
   X
 } from 'lucide-react'
@@ -14,11 +13,10 @@ import { Logo } from '@/components/Logo'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useNavbarVisibilityStore } from '@/store/navbar-visibility-store'
-import { useGitStore } from '@/store/git-store'
+import { useTeamPanelStore } from '@/store/team-panel-store'
 import { minimize, toggleMaximize, closeWindow, onMaximizedChanged } from '@/tauri/window'
 import { isMacPlatform } from '@/lib/platform'
 import { needsTrafficLightInset } from '@/lib/titlebar-chrome'
-import { HeaderRecentSearch } from './HeaderRecentSearch'
 
 // On macOS the OS draws native traffic lights over this header (titleBarStyle
 // Overlay — see tauri.macos.conf.json): hide the custom window buttons and
@@ -28,7 +26,6 @@ import { HeaderRecentSearch } from './HeaderRecentSearch'
 const isMac = isMacPlatform()
 // Tooltip hints must match the platform binding (mac convention: ⇧ before ⌘).
 const navbarHint = isMac ? '⌘B' : 'Ctrl+B'
-const broadcastHint = isMac ? '⇧⌘B' : 'Ctrl+Shift+B'
 
 interface TitleBarProps {
   /** Native full screen, owned by App — it drives the system-chrome dodge too. */
@@ -36,29 +33,17 @@ interface TitleBarProps {
 }
 
 /**
- * Custom window title bar for the frameless window. Left cluster:
- * [sidebar toggle] [app icon] [app name]. Centre: a read-only pill showing the
- * active workspace's name. Right: minimize / maximize / close window controls
- * on Windows/Linux; on macOS those are hidden — the OS overlays native
- * traffic lights at the left instead (see tauri.macos.conf.json).
+ * Centered app branding with sidebar and window controls on either side.
+ * macOS draws its native window controls over the left edge.
  */
 export function TitleBar({ fullscreen }: TitleBarProps): ReactElement {
   const [isMaximized, setIsMaximized] = useState(false)
   const visible = useNavbarVisibilityStore((s) => s.visible)
   const toggleNavbar = useNavbarVisibilityStore((s) => s.toggle)
-  const rightPanelOpen = useGitStore((s) => s.panelOpen)
-  const toggleRightPanel = useGitStore((s) => s.togglePanel)
-  const activeWorkspaceName = useAppStore((s) => {
-    const active = s.workspaces.find((w) => w.id === s.activeWorkspaceId)
-    return active?.name
-  })
+  const rightPanelOpen = useTeamPanelStore((s) => s.open)
+  const toggleRightPanel = useTeamPanelStore((s) => s.toggle)
   // Home view = Welcome focused, or no workspaces yet (matches App's showWelcome).
   const onHome = useAppStore((s) => s.welcomeFocused || s.workspaces.length === 0)
-  const broadcastActive = useAppStore((s) => {
-    const active = s.workspaces.find((w) => w.id === s.activeWorkspaceId)
-    return active?.broadcastActive ?? false
-  })
-  const toggleBroadcast = useAppStore((s) => s.toggleBroadcast)
 
   useEffect(() => {
     if (isMac) return // maximize icon swap only exists on the custom buttons
@@ -71,15 +56,14 @@ export function TitleBar({ fullscreen }: TitleBarProps): ReactElement {
     <div
       data-tauri-drag-region
       // Toggling a panel here must not strand the keyboard on the button that
-      // was clicked — App.tsx hands it back (lib/terminal-focus.ts). The recents
-      // search input is exempt automatically: it holds focus legitimately.
+      // was clicked. App.tsx hands it back (lib/terminal-focus.ts).
       data-focus-return
-      className={cn(
-        'flex h-9 shrink-0 items-center justify-between border-b border-border bg-card pl-1.5',
-        needsTrafficLightInset(isMac, fullscreen) && 'pl-20'
-      )}
+      className="grid h-9 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-border bg-card"
     >
-      <div className="flex items-center gap-1.5">
+      <div
+        data-tauri-drag-region
+        className={cn('justify-self-start', needsTrafficLightInset(isMac, fullscreen) ? 'pl-20' : 'pl-1.5')}
+      >
         <button
           type="button"
           data-tauri-drag-region="false"
@@ -90,52 +74,24 @@ export function TitleBar({ fullscreen }: TitleBarProps): ReactElement {
         >
           {visible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
         </button>
-        {/* 24px, not the 16px of the icons around it: below that the extruded
-            box collapses, and the mark stops out-weighing the sidebar toggle
-            beside it — the button ends up reading as the brand. */}
-        <Logo className="h-6 w-6" />
-        <span className="text-xs font-semibold">Swarmterm</span>
       </div>
 
       <div
         data-tauri-drag-region
-        className="flex min-w-0 flex-1 items-center justify-center px-2"
+        className="flex h-full select-none items-center gap-2"
       >
-        {onHome ? (
-          <HeaderRecentSearch />
-        ) : (
-          activeWorkspaceName !== undefined && (
-            <div className="inline-flex h-[22px] max-w-[40vw] items-center rounded border border-border bg-muted px-3 text-xs text-muted-foreground">
-              <span className="truncate">{activeWorkspaceName}</span>
-            </div>
-          )
-        )}
+        <Logo className="pointer-events-none size-6" />
+        <span className="pointer-events-none text-xs font-semibold">SwarmAgent</span>
       </div>
 
-      <div className="flex h-full items-center">
+      <div className="flex h-full items-center justify-self-end">
         {!onHome && (
           <button
             type="button"
             data-tauri-drag-region="false"
-            aria-label={`Toggle broadcast input (${broadcastHint})`}
-            aria-pressed={broadcastActive}
-            title={`Broadcast input to selected terminals (${broadcastHint})`}
-            onClick={toggleBroadcast}
-            className={cn(
-              'mr-1 flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-foreground',
-              broadcastActive ? 'text-broadcast' : 'text-muted-foreground'
-            )}
-          >
-            <Radio className="h-4 w-4" />
-          </button>
-        )}
-        {!onHome && (
-          <button
-            type="button"
-            data-tauri-drag-region="false"
-            aria-label="Toggle Preview / Git panel"
+            aria-label="Toggle Agent Team"
             aria-pressed={rightPanelOpen}
-            title="Toggle Preview / Git panel"
+            title="Toggle Agent Team"
             onClick={toggleRightPanel}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground mr-1"
           >

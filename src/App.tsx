@@ -9,7 +9,6 @@ import {
 import {
   useAppStore,
   selectFocusedTerminalId,
-  selectWorkspaceByTerminalId,
   type Workspace as WorkspaceModel
 } from '@/store/app-store'
 import { useNavbarVisibilityStore } from '@/store/navbar-visibility-store'
@@ -27,7 +26,6 @@ import {
   disposeOrphanTerminals,
   focusTerminal,
   getTerminalAgentId,
-  getTerminalCwd,
   isAnyTerminalFocused,
   noteAgentHook,
   refitAttachedTerminals
@@ -38,11 +36,8 @@ import {
   FOCUS_RETURN_ATTR
 } from '@/lib/terminal-focus'
 import { GuardedPointerSensor } from '@/lib/dnd-sensors'
-import { resolveDragEnd, memberDisplayName, MEMBER_DRAG_PREFIX } from '@/lib/war-room-drop'
-import { buildIntroText } from '@/lib/war-room-nudge'
-import { startWarRoomDelivery } from '@/lib/war-room-delivery'
-import { resolvePaneTitle } from '@/lib/pane-title'
-import { DEFAULT_TEMPLATE_ID } from '@/lib/templates'
+import { resolveDragEnd } from '@/lib/agent-team-drop'
+import { startAgentTeamDelivery } from '@/lib/agent-team-delivery'
 import { FileDropListener } from '@/components/FileDropListener'
 import { RightPanel } from '@/components/RightPanel/RightPanel'
 import { Navbar } from '@/components/Navbar/Navbar'
@@ -50,12 +45,11 @@ import { SettingsView } from '@/components/Settings/SettingsView'
 import { TitleBar } from '@/components/TitleBar/TitleBar'
 import { Workspace, PaneDragGhost } from '@/components/Workspace/Workspace'
 import { Welcome } from '@/components/Welcome/Welcome'
-import { useBrowserStore } from '@/store/browser-store'
 import { useUpdaterStore } from '@/store/updater-store'
 import { PERIODIC_CHECK_INTERVAL_MS, STARTUP_CHECK_DELAY_MS } from '@/lib/updater-flow'
 import { onUpdateCheckRequested } from '@/tauri/updater'
 import { showMessage } from '@/tauri/dialog'
-import { useGitStore } from '@/store/git-store'
+import { useTeamPanelStore } from '@/store/team-panel-store'
 import { useRecentsStore } from '@/store/recents-store'
 import { useAgentAvailabilityStore } from '@/store/agent-availability-store'
 import { useShellAvailabilityStore } from '@/store/shell-availability-store'
@@ -63,24 +57,13 @@ import { useTerminalTitleStore } from '@/store/terminal-title-store'
 import { useNotificationPrefStore } from '@/store/notification-pref-store'
 import { startNotificationWatch } from '@/lib/notification-watch'
 import { startAgentStateMirror } from '@/lib/agent-state-mirror'
-import { startGitRefreshWatch } from '@/lib/git-refresh'
 import { reportAgentState, onAgentHook, onAgentContext } from '@/tauri/agent-state'
 import { playChime } from '@/lib/notification-sound'
 import { getInputCompatibility } from '@/tauri/input-compatibility'
 import { sendSystemNotification } from '@/tauri/notification'
 import { useTerminalSearchStore } from '@/store/terminal-search-store'
-import { useWarRoomStore } from '@/store/war-room-store'
-import {
-  warRoomJoin,
-  warRoomLeave,
-  warRoomRooms,
-  onWarRoomEvent,
-  onWarRoomDeliver,
-  onWarRoomRooms
-} from '@/tauri/warroom'
-import { onPreviewOpen } from '@/tauri/preview'
-import { closePreview, openPreview, wirePreviewEvents } from '@/lib/preview-registry'
-import { onWorktreeSpawn, onWorktreeRemoved } from '@/tauri/worktree'
+import { useAgentTeamStore } from '@/store/agent-team-store'
+import { editTeam } from '@/tauri/agent-team'
 import { showWindow } from '@/tauri/window'
 import type { CategoryId } from '@/components/Settings/SettingsView'
 
@@ -108,142 +91,44 @@ export default function App(): ReactElement {
   // inset and the system-chrome dodge below are driven by it.
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // --- pane drag-and-drop: hoisted here (from Workspace.tsx) so the right
-  // panel — a sibling of the workspace, not a descendant — can host the War
-  // Room drop zone. See lib/war-room-drop.ts for the join/leave/reorder rule.
   const reorderPane = useAppStore((s) => s.reorderPane)
   const [draggingLeafId, setDraggingLeafId] = useState<string | null>(null)
-  // Restore the right panel exactly as it was when a drag reveals it and the
-  // drop lands elsewhere — revealing the zone must not permanently flip tabs.
-  const panelBeforeDragRef = useRef<{ open: boolean; mode: 'browser' | 'git' | 'warroom' } | null>(null)
+  const panelBeforeDrag = useRef<boolean | null>(null)
   const dndSensors = useSensors(
     useSensor(GuardedPointerSensor, { activationConstraint: { distance: 5 } })
   )
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId)
-  const draggingLeaf =
-    draggingLeafId && !draggingLeafId.startsWith(MEMBER_DRAG_PREFIX) && activeWs
-      ? findLeaf(activeWs.layout, draggingLeafId)
-      : null
+  const draggingLeaf = draggingLeafId && activeWs ? findLeaf(activeWs.layout, draggingLeafId) : null
 
-  const restorePanelIfNoDrop = useCallback((): void => {
-    const prior = panelBeforeDragRef.current
-    panelBeforeDragRef.current = null
-    if (!prior) return
-    const git = useGitStore.getState()
-    git.setMode(prior.mode === 'warroom' ? 'warroom' : prior.mode)
-    git.setPanelOpen(prior.open)
-  }, [])
-
-  const joinWarRoom = useCallback((leafId: string, roomId: string): void => {
-    const st = useAppStore.getState()
-    const ws = st.workspaces.find((w) => w.id === st.activeWorkspaceId)
-    const leaf = ws ? findLeaf(ws.layout, leafId) : null
-    if (!ws || !leaf) {
-      restorePanelIfNoDrop() // no target pane — don't leave the panel flipped
-      return
-    }
-    // Re-dropping a pane that's already a member of THIS room must not
-    // re-enqueue the execute-shaped intro: that would burn another agent turn
-    // for nothing. A pane dragged into a DIFFERENT room still arrives here
-    // (not through moveMember, which only handles member-chip drags), so the
-    // guard compares rooms rather than just membership.
-    const priorRoomId = useWarRoomStore.getState().memberRoomId(leaf.terminalId)
-    const alreadyMember = priorRoomId === roomId
-    const resolvedAgent = leaf.agentId ?? DEFAULT_TEMPLATE_ID
-    // 'terminal' is the plain shell template — a member, but never nudged and
-    // never an execute target (the backend enforces the latter).
-    const agentId = resolvedAgent === DEFAULT_TEMPLATE_ID ? undefined : resolvedAgent
-    const cwd = getTerminalCwd(leaf.terminalId) ?? leaf.cwd ?? ws.cwd
-    // Folder-disambiguated: two joined panes running the same agent (e.g. two
-    // "Claude Code" instances) would otherwise show identical chips and
-    // "Claude Code → Claude Code" transcript rows with no way to tell them
-    // apart. Computed AFTER cwd is resolved above.
-    const displayName = memberDisplayName(
-      resolvePaneTitle(resolvedAgent, useTerminalTitleStore.getState().titles[leaf.terminalId]),
-      cwd
-    )
-    const st2 = useWarRoomStore.getState()
-    const peers = (st2.membersByRoom[roomId] ?? [])
-      .filter((m) => m.terminalId !== leaf.terminalId)
-      .map((m) => m.name)
-    const roomName = st2.rooms.find((r) => r.roomId === roomId)?.name ?? 'War Room'
-    void warRoomJoin({ roomId, terminalId: leaf.terminalId, agentId, cwd, displayName })
-      .then(() => {
-        // Same event-vs-response ordering guarantee as moveMember's
-        // enqueueIntro below (see its comment): if this join was itself a
-        // move (priorRoomId !== roomId), the old room's Leave has already
-        // applied by the time we get here, so this enqueue lands clean.
-        if (agentId && !alreadyMember) {
-          useWarRoomStore.getState().enqueueIntro(leaf.terminalId, buildIntroText(roomName, peers))
-        }
-        useGitStore.getState().setMode('warroom')
-        panelBeforeDragRef.current = null // drop landed — keep the panel on War Room
-      })
-      .catch((e) => {
-        console.warn('war room join failed:', e)
-        restorePanelIfNoDrop() // join failed — don't leave the panel flipped to War Room
-      })
-  }, [restorePanelIfNoDrop])
-
-  const moveMember = useCallback((terminalId: string, roomId: string): void => {
-    const st = useWarRoomStore.getState()
-    const fromRoom = st.memberRoomId(terminalId)
-    const member =
-      fromRoom !== null ? st.membersByRoom[fromRoom]?.find((m) => m.terminalId === terminalId) : undefined
-    if (!member) return
-    const peers = (st.membersByRoom[roomId] ?? []).map((m) => m.name)
-    const roomName = st.rooms.find((r) => r.roomId === roomId)?.name ?? 'War Room'
-    void warRoomJoin({
-      roomId,
-      terminalId,
-      agentId: member.agentId ?? undefined,
-      cwd: member.cwd,
-      displayName: member.name
-    })
-      .then(() => {
-        // A move resets the handshake (new room, new pending state); the intro
-        // tells the agent to call list_peers, which reconnects it immediately.
-        //
-        // Ordering note — the first place in this file where event-vs-response
-        // ordering is load-bearing, hence written down: the backend emits this
-        // terminal's Leave(oldRoom) then Join(newRoom) BEFORE the `war_room_join`
-        // invoke resolves, and Tauri delivers both events through the same
-        // web-content queue ahead of the response. So by the time this .then
-        // runs, applyEvent's 'leave' branch has already cleared this terminal's
-        // queue — the enqueueIntro below can't be swallowed by its own move.
-        if (member.agentId) {
-          useWarRoomStore.getState().enqueueIntro(terminalId, buildIntroText(roomName, peers))
-        }
-      })
-      .catch((e) => console.warn('war room move failed:', e))
-  }, [])
+  function restoreTeamPanel(): void {
+    if (panelBeforeDrag.current !== null) useTeamPanelStore.getState().setOpen(panelBeforeDrag.current)
+    panelBeforeDrag.current = null
+  }
 
   function handleDragStart(id: string): void {
     setDraggingLeafId(id)
-    if (id.startsWith(MEMBER_DRAG_PREFIX)) return
-    const git = useGitStore.getState()
-    panelBeforeDragRef.current = { open: git.panelOpen, mode: git.mode }
-    git.setMode('warroom') // reveal the drop zone while the pane is in flight
+    const panel = useTeamPanelStore.getState()
+    panelBeforeDrag.current = panel.open
+    const leaf = activeWs && findLeaf(activeWs.layout, id)
+    if (leaf?.agentId && leaf.agentId !== 'terminal') panel.setOpen(true)
   }
 
   function handleDragEnd(activeId: string, overId: string | null): void {
     setDraggingLeafId(null)
-    const st = useWarRoomStore.getState()
-    const action = resolveDragEnd(activeId, overId, {
-      activeRoomId: st.activeRoomId,
-      memberRoomId: st.memberRoomId
-    })
-    if (action.kind === 'join') {
-      joinWarRoom(action.leafId, action.roomId)
-      return
+    const action = resolveDragEnd(activeId, overId)
+    if (action.kind === 'join' && activeWs) {
+      const leaf = findLeaf(activeWs.layout, action.leafId)
+      if (leaf) {
+        panelBeforeDrag.current = null
+        const { setError } = useAgentTeamStore.getState()
+        setError(activeWs.id, null)
+        void editTeam({ kind: 'join', teamId: activeWs.id, terminalId: leaf.terminalId })
+          .catch((error) => setError(activeWs.id, String(error)))
+        return
+      }
     }
-    if (action.kind === 'move') {
-      moveMember(action.terminalId, action.roomId)
-      return
-    }
-    restorePanelIfNoDrop()
+    restoreTeamPanel()
     if (action.kind === 'reorder') reorderPane(action.activeLeafId, action.overLeafId)
-    else if (action.kind === 'leave') void warRoomLeave(action.terminalId)
   }
 
   const noWorkspaces = workspaces.length === 0
@@ -282,57 +167,15 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Esc exits broadcast mode (which clears the group).
-      if (e.key === 'Escape') {
-        // ModeratorComposer also treats Escape as its own gesture (blur, hand
-        // the keyboard back to the terminal) — but this listener is capture-
-        // phase on `window`, so it runs BEFORE the composer's own keydown
-        // handler and a `stopPropagation()` there can't stop it. Without this
-        // guard, pressing Esc to leave the composer would also blow away a
-        // hand-built broadcast group with no undo.
-        //
-        // shouldReturnFocus alone is not enough: it treats every <textarea>
-        // as owning the keyboard (see terminal-focus.ts), and xterm's own
-        // hidden input IS a <textarea> — so gating on it alone would ALSO
-        // swallow Escape while a terminal has focus, which is the ordinary,
-        // overwhelmingly common way this shortcut gets used (you exit
-        // broadcast mode from inside the terminal you were typing into).
-        // isAnyTerminalFocused() carves that one case back out; every OTHER
-        // editable widget (the composer, a rename field, an open menu) still
-        // blocks the toggle exactly as shouldReturnFocus already decides.
-        if (!isAnyTerminalFocused() && !shouldReturnFocus(describeFocusedElement(document.activeElement))) {
-          return
-        }
-        const st = useAppStore.getState()
-        const ws = st.workspaces.find((w) => w.id === st.activeWorkspaceId)
-        if (ws?.broadcastActive) {
-          e.preventDefault()
-          st.toggleBroadcast()
-          return
-        }
-      }
-      // Cmd+B / Cmd+Shift+B / Cmd+F / Cmd+Shift+J on mac, Ctrl+B /
-      // Ctrl+Shift+B / Ctrl+F / Ctrl+Shift+J elsewhere. If these bindings
-      // change, update src/lib/keybindings.ts.
       const action = matchAppShortcut(e, isMac)
-      if (action === 'toggle-broadcast') {
-        e.preventDefault()
-        useAppStore.getState().toggleBroadcast()
-        return
-      }
       if (action === 'toggle-navbar') {
         e.preventDefault()
         useNavbarVisibilityStore.getState().toggle()
         return
       }
       if (action === 'find-in-terminal') {
-        // Same "does something else legitimately own the keyboard" guard as
-        // the broadcast-Esc handler above: stand down while the composer, a
-        // rename field, or an open menu has focus. isAnyTerminalFocused()
-        // still carves the terminal itself back out, and re-covers the case
-        // where the overlay is already open but the user clicked back into
-        // the terminal — open() below is idempotent, so this just re-focuses
-        // the existing find input.
+        // Leave editable UI in control. xterm's own input is a textarea too,
+        // so explicitly allow find while a terminal has keyboard focus.
         if (!isAnyTerminalFocused() && !shouldReturnFocus(describeFocusedElement(document.activeElement))) {
           return
         }
@@ -503,66 +346,28 @@ export default function App(): ReactElement {
 
   const chromeOffset = systemChromeOffset(isMac, isFullscreen, systemChromeRevealed)
 
-  // Kill orphaned PTYs and close previews when terminals leave all layouts.
+  // Clean up sessions and teams as their workspaces close.
   useEffect(
     () =>
-      useAppStore.subscribe((state) => {
+      useAppStore.subscribe((state, previous) => {
         const live = liveTerminalIds(state.workspaces)
         disposeOrphanTerminals(live)
-        const { previews } = useBrowserStore.getState()
-        for (const terminalId of Object.keys(previews)) {
-          if (!live.has(terminalId)) closePreview(terminalId)
+        for (const workspace of previous.workspaces) {
+          if (!state.workspaces.some((current) => current.id === workspace.id)) {
+            useAgentTeamStore.getState().setError(workspace.id, null)
+            void editTeam({ kind: 'closeWorkspace', teamId: workspace.id }).catch(console.error)
+          }
         }
-        // Titles are keyed by terminalId outside the layout tree (see
-        // terminal-title-store) — sweep them the same way previews are, or a
-        // closed pane's title lingers in the store for the rest of the session.
         const { titles, clearTitle } = useTerminalTitleStore.getState()
         for (const terminalId of Object.keys(titles)) {
           if (!live.has(terminalId)) clearTitle(terminalId)
-        }
-        // War Room members whose terminal left every layout: the Rust
-        // auto-leave on pty death normally beats us here — this sweep is the
-        // belt-and-braces for any path that drops a pane without killing it.
-        // warRoomLeave is idempotent, so racing the backend is harmless.
-        // Iterate every room's slice — the sweep doesn't just target whatever
-        // room is currently shown in the panel.
-        for (const ms of Object.values(useWarRoomStore.getState().membersByRoom)) {
-          for (const m of ms) {
-            if (!live.has(m.terminalId)) void warRoomLeave(m.terminalId)
-          }
         }
       }),
     []
   )
 
-  // Wire MCP preview:open events to the per-terminal preview. Background
-  // terminals update silently — the panel is only revealed when the event
-  // belongs to the terminal the user is looking at.
-  useEffect(() => {
-    const unlisten = onPreviewOpen((e) => {
-      openPreview(e.terminalId, e.url)
-      const st = useAppStore.getState()
-      const ws = st.workspaces.find((w) => w.id === st.activeWorkspaceId)
-      const focused = ws ? findLeaf(ws.layout, ws.focusedLeafId)?.terminalId : undefined
-      if (focused === e.terminalId) {
-        useGitStore.getState().setMode('browser')
-        // Creating a native webview can grab OS focus out from under the
-        // pane — same landing-after-everyone defence the drag/menu paths use.
-        deferReturnFocusToTerminal()
-      }
-    })
-    return () => {
-      void unlisten.then((fn) => fn())
-    }
-  }, [deferReturnFocusToTerminal])
-
-  // Wire native webview navigation/title/loading and denied-popup events into
-  // the store — see lib/preview-registry.ts. Mount-once: the registry itself
-  // is a module singleton, this just attaches its listeners for the app's life.
-  useEffect(() => wirePreviewEvents(), [])
-
   // Silent update checks: one a few seconds after boot (never competing with
-  // pty spawn), then periodically — Swarmterm runs for days, and the navbar
+  // pty spawn), then periodically — SwarmAgent runs for days, and the navbar
   // update button only ever appears through these. Failures are swallowed by
   // the flow reducer. The periodic tick only fires from idle so it can never
   // clobber a known update or an in-flight download.
@@ -585,7 +390,7 @@ export default function App(): ReactElement {
     return () => void unlisten.then((fn) => fn())
   }, [])
 
-  // Claude Code hook edges (`swarmterm --hook` → POST /hook → `agent:hook`)
+  // Claude Code hook edges (`swarm-agent --hook` → POST /hook → `agent:hook`)
   // feed the pane's detector directly. Mount-once and routed by terminalId so
   // no per-pane component has to own a listener — the registry decides whether
   // the pane's detector is one that understands hooks (Claude Code only).
@@ -594,7 +399,7 @@ export default function App(): ReactElement {
     return () => void unlisten.then((fn) => fn())
   }, [])
 
-  // Context-window usage (`swarmterm --statusline` → GET /status?ctx → `agent:context`)
+  // Context-window usage (`swarm-agent --statusline` → GET /status?ctx → `agent:context`)
   // lands in its own store, keyed by terminalId, so only the pane whose number
   // changed re-renders its chip. `pct: null` clears it — Rust publishes that on
   // every Forget, and the store makes a null-on-nothing a no-op.
@@ -612,11 +417,11 @@ export default function App(): ReactElement {
       if (cur.state.phase === prev.state.phase) return
       if (cur.state.phase === 'upToDate') {
         useUpdaterStore.getState().dismiss()
-        void showMessage('Swarmterm is up to date.', { title: 'Swarmterm' })
+        void showMessage('SwarmAgent is up to date.', { title: 'SwarmAgent' })
       } else if (cur.state.phase === 'error') {
         const detail = cur.state.message
         useUpdaterStore.getState().dismiss()
-        void showMessage(`Update check failed:\n${detail}`, { title: 'Swarmterm', kind: 'error' })
+        void showMessage(`Update check failed:\n${detail}`, { title: 'SwarmAgent', kind: 'error' })
       }
     })
   }, [])
@@ -646,45 +451,7 @@ export default function App(): ReactElement {
     })
   }, [])
 
-  // Git panel self-refresh: an agent pane leaving `working` (or exiting) inside
-  // the selected worktree, or a plain pane finishing a command (OSC 133),
-  // re-fetches it in place. Same outside-the-render-path
-  // subscription as the notification watch. The live registry cwd (OSC 7) is
-  // preferred — `leaf.cwd` is only the spawn/picker value — and the watch
-  // caches it for panes that have already been disposed.
-  useEffect(() => {
-    return startGitRefreshWatch({
-      subscribeAgentStates: (listener) =>
-        useAgentStateStore.subscribe((cur, prev) => listener(cur.byId, prev.byId)),
-      subscribeCommands: (listener) =>
-        useShellMarkStore.subscribe((cur, prev) => listener(cur.byId, prev.byId)),
-      cwdOf: (id) => {
-        const live = getTerminalCwd(id)
-        if (live !== undefined) return live
-        const ws = selectWorkspaceByTerminalId(useAppStore.getState(), id)
-        if (ws === undefined) return undefined
-        return collectLeaves(ws.layout).find((l) => l.terminalId === id)?.cwd ?? ws.cwd
-      },
-      getGit: () => {
-        const g = useGitStore.getState()
-        return {
-          panelVisible: g.panelOpen && g.mode === 'git',
-          worktrees: g.worktrees,
-          selectedWorktreePath: g.selectedWorktreePath
-        }
-      },
-      refreshSelected: () => useGitStore.getState().refreshSelected(),
-      setTimer: (fn, ms) => window.setTimeout(fn, ms),
-      clearTimer: (h) => window.clearTimeout(h as number)
-    })
-  }, [])
-
-  // Mirror renderer agent state into Rust: the MCP War Room peer verbs
-  // (`war_room.wait_peer` / `read_peer`) live server-side and Rust has no state
-  // engine of its own, so every display-state change is reported down. Same
-  // outside-the-render-path subscription as above. Fire-and-forget: a failed
-  // IPC (browser dev without Tauri, report racing a kill) must never throw
-  // into the store listener and take the other subscribers down with it.
+  // Report settled turns for token statistics and review reservations.
   useEffect(() => {
     return startAgentStateMirror({
       subscribe: (listener) =>
@@ -696,49 +463,7 @@ export default function App(): ReactElement {
     })
   }, [])
 
-  // Wire MCP worktree tool events to store actions: spawn opens a worker pane,
-  // removed clears the binding and relocates the pane back to the workspace folder.
-  useEffect(() => {
-    const unSpawn = onWorktreeSpawn((e) => {
-      useAppStore.getState().spawnWorktreePane({
-        requesterTerminalId: e.requesterTerminalId,
-        path: e.path,
-        branch: e.branch,
-        agentId: e.agent ?? undefined,
-        prompt: e.prompt
-      })
-    })
-    const unRemoved = onWorktreeRemoved((e) => {
-      useAppStore.getState().clearWorktreeBinding(e.path)
-    })
-    return () => {
-      void unSpawn.then((f) => f())
-      void unRemoved.then((f) => f())
-    }
-  }, [])
-
-  // War Room: transcript/membership events feed the store; deliver events queue
-  // nudges/prompts typed into idle panes by the delivery wiring.
-  useEffect(() => {
-    const stopDelivery = startWarRoomDelivery()
-    const unEvent = onWarRoomEvent((e) => useWarRoomStore.getState().applyEvent(e))
-    const unDeliver = onWarRoomDeliver((d) => useWarRoomStore.getState().enqueue(d))
-    // Room list can change independent of membership (create/rename/delete);
-    // keep it live so a room disappearing mid-session tears down its slice.
-    const unRooms = onWarRoomRooms((rooms) => useWarRoomStore.getState().applyRooms(rooms))
-    // Membership lives Rust-side and outlives renderer reloads (dev HMR,
-    // crash-restore) — hydrate so the panel never shows an empty room while
-    // the server still routes messages.
-    void warRoomRooms()
-      .then((list) => useWarRoomStore.getState().hydrateRooms(list))
-      .catch(() => {}) // matches the existing hydration's error posture
-    return () => {
-      stopDelivery()
-      void unEvent.then((f) => f())
-      void unDeliver.then((f) => f())
-      void unRooms.then((f) => f())
-    }
-  }, [])
+  useEffect(() => startAgentTeamDelivery(), [])
 
   return (
     <div
@@ -771,10 +496,6 @@ export default function App(): ReactElement {
               not — the Settings modal dims them behind its backdrop, and their
               terminals (and PTYs) survive a Settings detour. */}
           <div className="relative min-h-0 flex-1 bg-canvas">
-              {/* Workspace(s) left, right panel (Preview/Git/War Room) when
-                  toggled on. DndContext lives here, above both, so a pane
-                  dragged out of the workspace can be dropped on the War Room
-                  panel sitting beside it — see lib/war-room-drop.ts. */}
               <DndContext
                 sensors={dndSensors}
                 collisionDetection={pointerWithin}
@@ -782,7 +503,7 @@ export default function App(): ReactElement {
                 onDragEnd={(e) => handleDragEnd(String(e.active.id), e.over ? String(e.over.id) : null)}
                 onDragCancel={() => {
                   setDraggingLeafId(null)
-                  restorePanelIfNoDrop()
+                  restoreTeamPanel()
                 }}
               >
                 <div className="flex h-full w-full overflow-hidden">
@@ -797,7 +518,7 @@ export default function App(): ReactElement {
                       </div>
                     ))}
                   </div>
-                  <RightPanel />
+                  {activeWs && <RightPanel key={activeWs.id} workspaceId={activeWs.id} />}
                 </div>
                 <DragOverlay>
                   {draggingLeaf ? <PaneDragGhost leaf={draggingLeaf} /> : null}
