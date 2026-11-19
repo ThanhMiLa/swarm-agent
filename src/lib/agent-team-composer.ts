@@ -20,23 +20,32 @@ interface TeamDraft {
 
 const CODEX_COLLAPSED_PASTE = /^\s*›\s*\[Pasted Content \d+ chars\]\s*$/
 const ANTIGRAVITY_COLLAPSED_PASTE = /^\s*>\s*\[Pasted text #\d+ \+\d+ lines?\]\s*$/
+const CLAUDE_COLLAPSED_PASTE = /^\s*❯\s*\[Pasted text #\d+(?:\s+\+\d+\s+lines?)?\]\s*$/
 
 function isPastedDraft(agent: string | undefined, draft: TeamDraft): boolean {
   const tail = draft.expectedTail
   if (tail && draft.beforeCursor.join('').replace(/\s/g, '').endsWith(tail)) return true
 
-  // Both CLIs can hide the paste body behind a token. Only accept the
+  // CLIs can hide the paste body behind a token. Only accept the
   // token at the cursor, after SwarmAgent has written its own draft.
   const cursorLine = draft.beforeCursor.at(-1) ?? ''
-  if (agent === 'codex') return CODEX_COLLAPSED_PASTE.test(cursorLine)
-  return agent === 'antigravity' && ANTIGRAVITY_COLLAPSED_PASTE.test(cursorLine)
+  switch (agent) {
+    case 'codex':
+      return CODEX_COLLAPSED_PASTE.test(cursorLine)
+    case 'antigravity':
+      return ANTIGRAVITY_COLLAPSED_PASTE.test(cursorLine)
+    case 'claude-code':
+      return CLAUDE_COLLAPSED_PASTE.test(cursorLine)
+    default:
+      return false
+  }
 }
 
 /** CLI input cues visible near the cursor. A shell's prompt or a quiet
  * alternate screen alone does not authorize an automated Enter. */
 export function isAgentComposer(agent: string | undefined, lines: string[], draft?: TeamDraft): boolean {
   const screen = lines.join('\n')
-  if (/permission required|requesting permission|allow command\?|enter to confirm|trust this directory|trust the contents|trust this folder|select login method/i.test(screen) || hasBlockingDismissCue(agent, lines)) return false
+  if (/permission required|requesting permission|allow command\?|enter to confirm|enter to select|enter to submit|esc to cancel|do you want to proceed\?|trust this directory|trust the contents|trust this folder|select login method/i.test(screen) || hasBlockingDismissCue(agent, lines)) return false
 
   const hasPrompt = (mark: RegExp) => lines.some((line) => mark.test(line))
   switch (agent) {
@@ -52,6 +61,11 @@ export function isAgentComposer(agent: string | undefined, lines: string[], draf
       if (draft !== undefined) return isPastedDraft(agent, draft)
       return /\?\s+for shortcuts|enter to send/i.test(screen) &&
         (hasPrompt(/^\s*[❯›>](?:\s|$)/) || /type (?:your|a) (?:message|prompt)/i.test(screen))
+    case 'claude-code':
+      if (draft !== undefined) return isPastedDraft(agent, draft)
+      return !lines.some((line) => CLAUDE_COLLAPSED_PASTE.test(line)) &&
+        hasPrompt(/^\s*❯(?:\s|$)/) &&
+        /\?\s+for shortcuts|shift\+tab to cycle|bypass permissions on|accept edits on|plan mode on|mcp\s+[✓…✗]/i.test(screen)
     default:
       return false
   }

@@ -20,8 +20,18 @@ const resultStatus = {
   closed: 'Could not send to leader'
 }
 
+type MemberStatus = 'Unsupported' | 'MCP pending' | 'Needs input' | 'Working' | 'Ready'
+
+const memberStatusColor: Record<MemberStatus, string> = {
+  Ready: 'text-emerald-500',
+  Working: 'text-red-400',
+  'Needs input': 'text-purple-400',
+  'MCP pending': 'text-amber-400',
+  Unsupported: 'text-muted-foreground'
+}
+
 const iconButton = 'rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground'
-const supported = new Set(['codex', 'antigravity', 'opencode'])
+const supported = new Set(['codex', 'antigravity', 'opencode', 'claude-code'])
 
 export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactElement {
   const team = useAgentTeamStore((s) => s.snapshot.teams.find((item) => item.id === workspaceId))
@@ -32,7 +42,6 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
   const drop = useDroppable({ id: AGENT_TEAM_DROP_ID })
   const [view, setView] = useState<'members' | 'runs'>('members')
   const [draft, setDraft] = useState<{ memberId: string; name: string }>()
-  const enabled = team?.enabled ?? false
   const members = team?.members ?? []
   const runs = team?.runs ?? []
 
@@ -65,20 +74,6 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Users size={15} className="shrink-0 text-muted-foreground" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agent Team</h2>
-        <button
-          type="button"
-          aria-label="Team Mode"
-          aria-pressed={enabled}
-          title={enabled ? 'Turn Team Mode off' : 'Turn Team Mode on'}
-          className={cn(
-            'flex items-center gap-1.5 rounded-full border border-border px-2 py-1 text-xs font-medium',
-            enabled ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
-          )}
-          onClick={() => void update({ kind: 'enable', teamId: workspaceId, enabled: !enabled })}
-        >
-          <span className="size-1.5 rounded-full bg-current" />
-          {enabled ? 'On' : 'Off'}
-        </button>
         <button type="button" aria-label="Hide Agent Team" className={iconButton} onClick={() => useTeamPanelStore.getState().setOpen(false)}><X size={14} /></button>
       </header>
 
@@ -108,7 +103,7 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
           {members.map((member) => {
             const state = agentStates[member.terminalId]?.state
             const ready = supported.has(member.agentId) && connected[member.memberId]
-            const label = !supported.has(member.agentId) ? 'Unsupported'
+            const label: MemberStatus = !supported.has(member.agentId) ? 'Unsupported'
               : !ready ? 'MCP pending'
               : state === 'blocked' ? 'Needs input' : state === 'working' ? 'Working' : 'Ready'
 
@@ -138,7 +133,7 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
                   <AgentIcon template={templateById(member.agentId)} className="size-3.5 shrink-0" />
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium">{member.name}</span>
-                    <span className={cn('block truncate text-[11px]', label === 'Ready' ? 'text-emerald-500' : 'text-muted-foreground')}>{label}</span>
+                    <span className={cn('block truncate text-[11px]', memberStatusColor[label])}>{label}</span>
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center">
@@ -150,7 +145,7 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
             )
           })}
         </> : <>
-          {runs.length === 0 && <p className="p-1 text-xs text-muted-foreground">{enabled ? 'Ask a member to delegate to start a run.' : 'Turn on Team Mode to start a run.'}</p>}
+          {runs.length === 0 && <p className="p-1 text-xs text-muted-foreground">{members.length > 0 ? 'Ask a member to delegate to start a run.' : 'Add a member to start a run.'}</p>}
           {[...runs].reverse().map((run, index) => (
             <details key={run.id} className="mb-2 rounded-md border border-border p-2 text-xs" open={index === 0}>
               <summary className="cursor-pointer font-medium">{run.leader} · {run.results.length}/{run.tasks.length} resolved</summary>

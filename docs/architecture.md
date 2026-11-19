@@ -11,8 +11,10 @@ replacement session.
 
 ## Agent Team lifecycle
 
-1. With Team Mode enabled, the leader uses `team_list_members` to find exact
-   member IDs and submits an assignment with `team_dispatch`.
+1. Agent Team is active automatically whenever at least one member is in the
+   team, and inactive when the roster is empty. A leader uses
+   `team_list_members` to find exact member IDs and submits an assignment with
+   `team_dispatch`.
 2. The backend checks that the panes share a checkout and branch, records the
    tasks, and acknowledges immediately so the leader can finish its turn.
 3. SwarmAgent delivers each prompt when its destination is safe to type into.
@@ -24,9 +26,10 @@ replacement session.
    one result at a time in completion order. The renderer submits each one
    when the leader’s composer is ready.
 
-The endpoint listens on loopback. Codex connects over HTTP. Antigravity and
-OpenCode use the same app-owned stdio bridge. The MCP tool list contains the
-three Agent Team tools. Closing a workspace removes its roster and runs.
+The endpoint listens on loopback. Claude Code and Codex connect over HTTP.
+Antigravity and OpenCode use the same app-owned `--mcp-stdio` bridge. The MCP
+tool list contains the three Agent Team tools. Closing a workspace removes its
+roster and runs.
 
 See the [user guide](user-guide.md) for usage, the
 [smoke tests](manual-smoke-tests.md) for verification, and the

@@ -47,10 +47,6 @@ pub enum Edit {
     CloseWorkspace {
         team_id: String,
     },
-    Enable {
-        team_id: String,
-        enabled: bool,
-    },
     Join {
         team_id: String,
         terminal_id: String,
@@ -116,7 +112,6 @@ pub async fn team_edit(app: AppHandle, edit: Edit) -> Result<(), String> {
                 teams.close_workspace(&team_id);
                 Ok(())
             }
-            Edit::Enable { team_id, enabled } => teams.set_enabled(&team_id, enabled),
             Edit::RenameMember {
                 team_id,
                 member_id,

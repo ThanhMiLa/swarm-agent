@@ -69,7 +69,7 @@ fn session(
 impl SwarmAgentMcpServer {
     #[tool(
         name = "team_list_members",
-        description = "List the panes in your Agent Team so you can resolve an exact name to a member ID. Use this for explicit inter-agent handoffs from the pane, including [TEAM]. A normal coding prompt is solo. If the team is off or a member is disconnected, tell the user instead of opening external apps or using computer control."
+        description = "List the panes in your Agent Team so you can resolve an exact name to a member ID. Use this for explicit inter-agent handoffs from the pane, including [TEAM]. A normal coding prompt is solo. If the team has no active members or a member is disconnected, tell the user instead of opening external apps or using computer control."
     )]
     pub async fn team_list_members(
         &self,

@@ -98,11 +98,11 @@ impl ServerHandler for SwarmAgentMcpServer {
                 "SwarmAgent provides workspace Agent Team tools. \
                  Agent Team is opt-in per user prompt: only use team tools for delegation if the \
                  user explicitly asks to use the team, names a member to delegate to, or writes [TEAM]. \
-                 A plain coding request is solo even when Team Mode is enabled. An instruction to send a \
+                 A plain coding request is solo even when the pane is in an Agent Team. An instruction to send a \
                  prompt to another CLI or agent from this pane refers to a SwarmAgent team member. \
                  Use only the SwarmAgent team tools for that request. Never open an external app, \
                  use computer control, create a Codex chat/thread, or launch another CLI to substitute for a team pane. If \
-                 Team Mode is off, a member is disconnected, or a team tool is missing or fails, \
+                 the team has no active members, a member is disconnected, or a team tool is missing or fails, \
                  report that obstacle to the user and stop that handoff. List members to find \
                  exact IDs and ask the user if a target is ambiguous. Plan distinct file scopes and \
                  call team_dispatch once, then end your turn without waiting. Assigned workers must \

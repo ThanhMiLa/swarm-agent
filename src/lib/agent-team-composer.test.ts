@@ -60,4 +60,45 @@ describe('Agent Team input readiness', () => {
     expect(isAgentComposer('antigravity', [...lines, 'esc to dismiss'], draft)).toBe(false)
     expect(isAgentComposer('antigravity', lines)).toBe(false)
   })
+
+  it('recognizes Claude Code composer without accepting shell or bare prompts', () => {
+    expect(isAgentComposer('claude-code', ['❯ ', '? for shortcuts'])).toBe(true)
+    expect(isAgentComposer('claude-code', ['❯ ', '  ▸▸ bypass permissions on (shift+tab to cycle)'])).toBe(true)
+    expect(isAgentComposer('claude-code', ['❯ ', '  accept edits on · mcp ✓ swarm_agent_team'])).toBe(true)
+    expect(isAgentComposer('claude-code', ['❯ ', '  plan mode on'])).toBe(true)
+    expect(isAgentComposer('claude-code', ['❯ '])).toBe(false)
+    expect(isAgentComposer('claude-code', ['username@machine project %'])).toBe(false)
+  })
+
+  it.each([
+    'Do you want to proceed?',
+    'Enter to select',
+    'Enter to submit',
+    'Esc to cancel',
+    'Yes, trust this folder'
+  ])('rejects %s blocking dialog for Claude Code both idle and with a pasted draft', (dialogCue) => {
+    const draft = { beforeCursor: ['Read-only task', 'hello'], expectedTail: 'taskhello' }
+    expect(isAgentComposer('claude-code', ['❯ ', '? for shortcuts', dialogCue])).toBe(false)
+    expect(isAgentComposer('claude-code', ['❯ hello', dialogCue], draft)).toBe(false)
+  })
+
+  it('recognizes the pasted claude-code draft and rejects mismatched tails', () => {
+    const beforeCursor = ['Read-only task. Do not edit files.', 'Task:', 'hello']
+    const lines = [...beforeCursor, '  ▸▸ bypass permissions on']
+    const draft = { beforeCursor, expectedTail: 'noteditfiles.Task:hello' }
+    expect(isAgentComposer('claude-code', lines, draft)).toBe(true)
+    expect(isAgentComposer('claude-code', lines, { ...draft, expectedTail: 'anotherdraft' })).toBe(false)
+  })
+
+  it('recognizes a Claude Code collapsed paste token only at the active cursor', () => {
+    const token = '❯ [Pasted text #1 +15 lines]'
+    const lines = ['Done', token, '  ▸▸ bypass permissions on (shift+tab to cycle)']
+    const draft = { beforeCursor: lines.slice(0, 2), expectedTail: 'nevermatchesrawtext' }
+
+    expect(isAgentComposer('claude-code', lines, draft)).toBe(true)
+    expect(isAgentComposer('claude-code', [...lines, '? for shortcuts'])).toBe(false)
+    expect(isAgentComposer('claude-code', lines, { ...draft, beforeCursor: [token, '❯ '] })).toBe(false)
+    expect(isAgentComposer('claude-code', [...lines, 'Esc to cancel'], draft)).toBe(false)
+    expect(isAgentComposer('claude-code', ['❯ [Pasted text #2]'], { beforeCursor: ['❯ [Pasted text #2]'], expectedTail: 'tail' })).toBe(true)
+  })
 })

@@ -10,7 +10,7 @@ use uuid::Uuid;
 const TASK_MS: u64 = 600_000;
 
 pub fn supports_delivery(agent: &str) -> bool {
-    matches!(agent, "codex" | "antigravity" | "opencode")
+    matches!(agent, "codex" | "antigravity" | "opencode" | "claude-code")
 }
 
 pub fn now_ms() -> u64 {
@@ -409,13 +409,6 @@ impl AgentTeams {
         Ok(())
     }
 
-    pub fn set_enabled(&mut self, workspace_id: &str, enabled: bool) -> Result<(), String> {
-        self.ensure_workspace(workspace_id)?;
-        self.team_mut(workspace_id)?.enabled = enabled;
-        self.changed();
-        Ok(())
-    }
-
     pub fn close_workspace(&mut self, workspace_id: &str) {
         self.closed_workspaces.insert(workspace_id.to_owned());
         let before = self.teams.len();
@@ -457,6 +450,7 @@ impl AgentTeams {
             name,
             agent_id,
         });
+        team.enabled = true;
         self.changed();
         Ok(())
     }
@@ -499,6 +493,7 @@ impl AgentTeams {
         for team in &mut self.teams {
             let before = team.members.len();
             team.members.retain(|m| &m.session != session);
+            team.enabled = !team.members.is_empty();
             changed |= before != team.members.len();
             for run in &mut team.runs {
                 if &run.origin == session && run.active() {
@@ -560,7 +555,7 @@ impl AgentTeams {
             });
         }
         if !team.enabled {
-            return Err("Team Mode is disabled".into());
+            return Err("Agent Team has no active members".into());
         }
         if !bounded(&request_id, 120)
             || !bounded(&plan, 8000)
@@ -931,8 +926,6 @@ mod tests {
     #[test]
     fn workspace_teams_are_isolated_and_closed_ids_cannot_reopen() {
         let mut f = Fixture::new();
-        f.state.set_enabled(&f.team, true).unwrap();
-        f.state.set_enabled(&f.team, true).unwrap();
         let other = "workspace-b";
         let session = Session {
             terminal_id: "other-codex".into(),
@@ -944,10 +937,18 @@ mod tests {
         assert_eq!(f.state.teams.len(), 2);
         let team = f.state.team_of(&session).unwrap();
         assert_eq!(team.id, other);
-        assert!(!team.enabled);
+        assert!(team.enabled);
         assert_eq!(team.members[0].name, "codex-1");
         f.state.close_workspace(&f.team);
-        assert!(f.state.set_enabled(&f.team, true).is_err());
+        assert!(f
+            .state
+            .join(
+                &f.team,
+                f.origin.clone(),
+                "codex".into(),
+                f.git.root.clone()
+            )
+            .is_err());
         assert!(f.state.team_of(&f.origin).is_err());
         assert!(f.state.team_of(&session).is_ok());
     }
@@ -984,8 +985,6 @@ mod tests {
     #[test]
     fn each_worker_result_reaches_the_original_leader_in_completion_order() {
         let mut f = Fixture::new();
-        assert!(f.dispatch().is_err());
-        f.state.set_enabled(&f.team, true).unwrap();
         let run = f.dispatch().unwrap();
         assert_eq!(f.dispatch().unwrap().run_id, run.run_id);
         assert_eq!(f.state.snapshot().pending.len(), 2);
@@ -999,7 +998,6 @@ mod tests {
             ..f.workers[0].0.clone()
         };
         assert!(f.state.report(&old, &run.run_id, a, report()).is_err());
-        f.state.set_enabled(&f.team, false).unwrap();
         let b_report = Report {
             summary: "Second worker finished first".into(),
             ..report()
@@ -1049,7 +1047,6 @@ mod tests {
     #[test]
     fn greeting_can_round_trip_without_editing_files() {
         let mut f = Fixture::new();
-        f.state.set_enabled(&f.team, true).unwrap();
         let (worker, member_id) = f.workers[0].clone();
         let assignments = vec![Assignment {
             member_id: member_id.clone(),
@@ -1094,7 +1091,6 @@ mod tests {
     #[test]
     fn timeout_keeps_partial_results_and_pane_replacement_cannot_review() {
         let mut f = Fixture::new();
-        f.state.set_enabled(&f.team, true).unwrap();
         let run = f.dispatch().unwrap();
         f.send(&run.task_ids[0]);
         f.state
@@ -1124,7 +1120,6 @@ mod tests {
     #[test]
     fn a_report_after_the_leader_leaves_stays_in_the_run() {
         let mut f = Fixture::new();
-        f.state.set_enabled(&f.team, true).unwrap();
         let run = f.dispatch().unwrap();
         let task = &run.task_ids[0];
         f.send(task);
@@ -1141,5 +1136,53 @@ mod tests {
         assert_eq!(stored.tasks[0].report, Some(report()));
         assert_eq!(stored.results[0].stage, Stage::Closed);
         assert_eq!(stored.results[0].note.as_deref(), Some(LEADER_LEFT));
+    }
+
+    #[test]
+    fn team_enables_automatically_with_members_and_disables_when_empty() {
+        let mut state = AgentTeams::default();
+        let team_id = "workspace-auto";
+        let root = PathBuf::from("repo");
+        let first = Session {
+            terminal_id: "pane-1".into(),
+            generation: 1,
+        };
+        let second = Session {
+            terminal_id: "pane-2".into(),
+            generation: 1,
+        };
+
+        state
+            .join(team_id, first.clone(), "codex".into(), root.clone())
+            .unwrap();
+        assert!(state.teams[0].enabled);
+
+        state
+            .join(team_id, second.clone(), "claude-code".into(), root.clone())
+            .unwrap();
+        assert!(state.teams[0].enabled);
+
+        assert!(state.leave(&first));
+        assert!(state.teams[0].enabled);
+
+        assert!(state.leave(&second));
+        assert!(!state.teams[0].enabled);
+        assert!(state.teams[0].members.is_empty());
+
+        state.join(team_id, first, "opencode".into(), root).unwrap();
+        assert!(state.teams[0].enabled);
+    }
+
+    #[test]
+    fn supports_delivery_includes_claude_code() {
+        for agent in ["codex", "antigravity", "opencode", "claude-code"] {
+            assert!(supports_delivery(agent), "{agent} should support delivery");
+        }
+        for agent in ["copilot", "terminal", "qwen", ""] {
+            assert!(
+                !supports_delivery(agent),
+                "{agent} should not support delivery"
+            );
+        }
     }
 }

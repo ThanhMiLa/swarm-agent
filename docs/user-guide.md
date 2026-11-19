@@ -45,9 +45,9 @@ Picking a working folder also lists that folder's recent Claude Code, Codex, Ope
 
 ## Agent Team
 
-Each workspace has a separate Agent Team. Open Codex, Antigravity or OpenCode panes in the same Git checkout. Drag each AI pane into **Agent Team** in the right panel. A plain shell cannot join. **Members** shows the total, the CLI and whether its MCP connection is ready. Panes of the same CLI receive separate names, such as `codex-1` and `codex-2`. Rename or copy a name from the member row.
+Each workspace has a separate Agent Team. Open Claude Code, Codex, Antigravity or OpenCode panes in the same Git checkout. Drag each AI pane into **Agent Team** in the right panel. A plain shell cannot join. **Members** shows the total, the CLI and whether its MCP connection is ready. Panes of the same CLI receive separate names, such as `codex-1` and `codex-2`. Rename or copy a name from the member row.
 
-Click **Off** in the Agent Team header to turn Team Mode on. In any member pane, ask for delegation explicitly. For example:
+Agent Team is automatically active whenever at least one member is in the team, and inactive when the team is empty. In any member pane, ask for delegation explicitly. For example:
 
 > [TEAM] Plan the users API and assign the endpoint to "backend" and tests to "tests".
 
@@ -173,7 +173,7 @@ dropped, never retried loudly, and never blocks the app.
 
 ## What your agents can do
 
-SwarmAgent configures MCP for Claude Code, Codex, Qwen Code, Antigravity and OpenCode. Codex, Antigravity, and OpenCode can use the Agent Team tools to list members, dispatch tasks, and report results.
+SwarmAgent configures MCP for Claude Code, Codex, Qwen Code, Antigravity and OpenCode. Claude Code, Codex, Antigravity and OpenCode can use the Agent Team tools to list members, dispatch tasks, and report results.
 
 ## Keyboard shortcuts
 
