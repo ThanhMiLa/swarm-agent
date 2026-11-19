@@ -12,10 +12,14 @@ high-refresh WebKit SPI, change system preferences, or expose a 120 Hz switch.
 
 Settings → Terminal → Scrolling applies immediately to running panes:
 
-- **Enhanced** (default): sensitivity 1.5, precise TUI wheel quantities, native
-  xterm mouse encodings and optional 100 ms animation for physical mouse wheels.
+- **Enhanced** (default): sensitivity 1.00x, with Codex preset panes at 1.20x.
+  Uses precise TUI wheel quantities, native xterm mouse encodings and optional
+  100 ms animation for physical mouse wheels.
 - **Compatibility**: native xterm wheel handling, sensitivity 1, animation off.
-- Sensitivity: 0.25–3, in 0.25 steps. Smooth mouse wheel can be disabled separately.
+- Default sensitivity: 0.25–3, in 0.25 steps. Each agent preset can override it
+  in 0.05 steps or inherit the default. The pane's multiplier applies to both
+  scrollback and wheel input forwarded to its TUI. A CLI launched manually in a
+  plain shell inherits the default. Existing saved values are preserved.
 
 Preferences persist under `swarmterm:terminal-scrolling`. Trackpad gestures use
 xterm's device classification; the application does not add its own inertia.
@@ -122,6 +126,7 @@ rAF cadence, renderer status and pending output. Unit tests additionally cover
 fractional input, delta modes, burst limits and protocol transitions.
 Reports also contain IPC messages/MiB and per-event traces separating wheel
 dispatch, parsed TUI response, frame phase and actual render latency.
+The benchmark pins sensitivity at 1.50x so runs remain comparable with the recorded results.
 
 Wheel-to-render measures actual xterm row rendering. The following rAF is labelled
 **presentation opportunity**, not physical scanout. Synthetic replay does not

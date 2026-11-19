@@ -3,6 +3,7 @@ import {
   DEFAULT_SCROLLING_PREF,
   readStoredScrollingPref,
   storeScrollingPref,
+  normalizeAgentSensitivity,
   normalizeSensitivity,
   type ScrollingMode,
   type TerminalScrollingPref
@@ -12,6 +13,7 @@ export interface TerminalScrollingStore {
   scrolling: TerminalScrollingPref
   setMode: (mode: ScrollingMode) => void
   setSensitivity: (sensitivity: number) => void
+  setAgentSensitivity: (agentId: string, sensitivity?: number) => void
   setSmoothMouseWheel: (enabled: boolean) => void
   setScrollingPref: (pref: Partial<TerminalScrollingPref>) => void
 }
@@ -38,11 +40,23 @@ export const useTerminalScrollingStore = create<TerminalScrollingStore>((set, ge
     setMode: (mode) => persist({ ...get().scrolling, mode }),
     setSensitivity: (sensitivity) =>
       persist({ ...get().scrolling, sensitivity: normalizeSensitivity(sensitivity) }),
+    setAgentSensitivity: (agentId, sensitivity) => {
+      const current = get().scrolling
+      const agentSensitivity = { ...(current.agentSensitivity ?? DEFAULT_SCROLLING_PREF.agentSensitivity) }
+      const normalized = normalizeAgentSensitivity(sensitivity)
+      if (normalized === undefined) {
+        delete agentSensitivity[agentId]
+        persist({ ...current, agentSensitivity })
+      } else {
+        persist({ ...current, agentSensitivity: { ...agentSensitivity, [agentId]: normalized } })
+      }
+    },
     setSmoothMouseWheel: (smoothMouseWheel) =>
       persist({ ...get().scrolling, smoothMouseWheel }),
     setScrollingPref: (patch) => {
       const current = get().scrolling
       const next: TerminalScrollingPref = {
+        ...current,
         mode: patch.mode ?? current.mode,
         sensitivity:
           patch.sensitivity !== undefined

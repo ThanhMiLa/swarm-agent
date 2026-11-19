@@ -2,9 +2,10 @@
  * Token Pricing Engine for Swarmterm
  *
  * Implements published pricing from:
- * - OpenAI (Codex): gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+ * - OpenAI (Codex): gpt-6.2-astra, gpt-6.2-sol, gpt-6.1-sol, gpt-6.1-terra,
+ *   gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
  * - DeepSeek: DeepSeek V4.1 Flash
- * - Google DeepMind (Antigravity): Gemini 4 Argon, Gemini 3.8 Flash (with date-based promo pricing)
+ * - Google DeepMind (Antigravity): Gemini 4 Argon, Gemini 4 Carbon, Gemini 4 Hydrogen, Gemini 4 Neon, Gemini 3.8 Flash (with date-based promo pricing)
  * - Anthropic: Claude Opus/Sonnet 4.6 and 5.5, Claude Fable 5.1, Claude Haiku 5.5
  *
  * Rates are stored in USD per 1,000,000 (1M) tokens for:
@@ -45,6 +46,18 @@ export function normalizeModelName(rawModel: string): string {
  */
 const STATIC_PRICING_TABLE: Record<string, ModelPricing> = {
   // --- OpenAI / Codex Models ---
+  'gpt-6.2-astra': {
+    inputPerMillion: 8.0,
+    outputPerMillion: 40.0,
+    cachePerMillion: 0.4,
+    displayName: 'GPT-6.2 Astra',
+  },
+  'gpt-6.2-sol': {
+    inputPerMillion: 2.0,
+    outputPerMillion: 10.0,
+    cachePerMillion: 0.1,
+    displayName: 'GPT-6.2 Sol',
+  },
   'gpt-6-astra': {
     inputPerMillion: 10.0,
     outputPerMillion: 50.0,
@@ -198,7 +211,19 @@ const STATIC_PRICING_TABLE: Record<string, ModelPricing> = {
     displayName: 'Claude 3 Opus',
   },
 
-  // --- Google / Antigravity Fallbacks ---
+  // --- Google / Antigravity Models & Fallbacks ---
+  'gemini-4-neon': {
+    inputPerMillion: 3.0,
+    outputPerMillion: 15.0,
+    cachePerMillion: 0.15,
+    displayName: 'Gemini 4 Neon',
+  },
+  'gemini-4-hydrogen': {
+    inputPerMillion: 1.5,
+    outputPerMillion: 7.5,
+    cachePerMillion: 0.075,
+    displayName: 'Gemini 4 Hydrogen',
+  },
   'gemini-2.5-pro': {
     inputPerMillion: 1.25,
     outputPerMillion: 5.0,
@@ -235,6 +260,67 @@ const DEFAULT_FALLBACK_PRICING: ModelPricing = {
   displayName: 'Standard Model',
 }
 
+interface PromoPricingRule {
+  slug: string
+  cutoffDate: string
+  promo: ModelPricing
+  standard: ModelPricing
+}
+
+/**
+ * Date-based promotional pricing rules (cutoffDate is the final promo date, inclusive).
+ */
+const PROMO_PRICING_RULES: PromoPricingRule[] = [
+  {
+    slug: 'gemini-4-argon',
+    cutoffDate: '2026-11-30',
+    promo: {
+      inputPerMillion: 2.0,
+      outputPerMillion: 10.0,
+      cachePerMillion: 0.1,
+      displayName: 'Gemini 4 Argon',
+    },
+    standard: {
+      inputPerMillion: 4.0,
+      outputPerMillion: 20.0,
+      cachePerMillion: 0.2,
+      displayName: 'Gemini 4 Argon',
+    },
+  },
+  {
+    slug: 'gemini-4-carbon',
+    cutoffDate: '2026-11-30',
+    promo: {
+      inputPerMillion: 2.0,
+      outputPerMillion: 10.0,
+      cachePerMillion: 0.1,
+      displayName: 'Gemini 4 Carbon',
+    },
+    standard: {
+      inputPerMillion: 4.0,
+      outputPerMillion: 20.0,
+      cachePerMillion: 0.2,
+      displayName: 'Gemini 4 Carbon',
+    },
+  },
+  {
+    slug: 'gemini-3.8-flash',
+    cutoffDate: '2026-12-31',
+    promo: {
+      inputPerMillion: 0.75,
+      outputPerMillion: 3.75,
+      cachePerMillion: 0.075,
+      displayName: 'Gemini 3.8 Flash',
+    },
+    standard: {
+      inputPerMillion: 1.5,
+      outputPerMillion: 7.5,
+      cachePerMillion: 0.15,
+      displayName: 'Gemini 3.8 Flash',
+    },
+  },
+]
+
 /**
  * Resolve pricing for a model on a given ISO date (YYYY-MM-DD).
  * Accurately handles Google DeepMind promotional date cutoffs.
@@ -243,41 +329,11 @@ export function getModelPricing(rawModel: string, dateStr?: string): ModelPricin
   const norm = normalizeModelName(resolveModelAlias(rawModel))
   const normHyphen = norm.replace(/\s+/g, '-')
 
-  // 1. Check Gemini 4 Argon (Cutoff: Nov 30, 2026)
-  if (normHyphen.includes('gemini-4-argon') || norm.includes('gemini 4 argon')) {
-    const isPostPromo = dateStr ? dateStr > '2026-11-30' : false
-    if (isPostPromo) {
-      return {
-        inputPerMillion: 4.0,
-        outputPerMillion: 20.0,
-        cachePerMillion: 0.2,
-        displayName: 'Gemini 4 Argon',
-      }
-    }
-    return {
-      inputPerMillion: 2.0,
-      outputPerMillion: 10.0,
-      cachePerMillion: 0.1,
-      displayName: 'Gemini 4 Argon',
-    }
-  }
-
-  // 2. Check Gemini 3.8 Flash (Cutoff: Dec 31, 2026)
-  if (normHyphen.includes('gemini-3.8-flash') || norm.includes('gemini 3.8 flash')) {
-    const isPostPromo = dateStr ? dateStr > '2026-12-31' : false
-    if (isPostPromo) {
-      return {
-        inputPerMillion: 1.5,
-        outputPerMillion: 7.5,
-        cachePerMillion: 0.15,
-        displayName: 'Gemini 3.8 Flash',
-      }
-    }
-    return {
-      inputPerMillion: 0.75,
-      outputPerMillion: 3.75,
-      cachePerMillion: 0.075,
-      displayName: 'Gemini 3.8 Flash',
+  // 1. Check date-based promotional pricing (Gemini 4 Argon, Gemini 4 Carbon, Gemini 3.8 Flash)
+  for (const rule of PROMO_PRICING_RULES) {
+    if (normHyphen.includes(rule.slug)) {
+      const isPostPromo = dateStr ? dateStr > rule.cutoffDate : false
+      return isPostPromo ? rule.standard : rule.promo
     }
   }
 

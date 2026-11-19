@@ -30,6 +30,15 @@ describe('token-pricing', () => {
   })
 
   describe('getModelPricing for Codex (OpenAI)', () => {
+    it.each([
+      ['gpt-6.2-astra', 'GPT-6.2 Astra', 8.0, 40.0, 0.4],
+      ['gpt-6.2-sol', 'GPT-6.2 Sol', 2.0, 10.0, 0.1],
+    ])('matches %s with or without a provider prefix and reasoning suffix', (id, displayName, inputPerMillion, outputPerMillion, cachePerMillion) => {
+      const pricing = { displayName, inputPerMillion, outputPerMillion, cachePerMillion }
+      expect(getModelPricing(id)).toEqual(pricing)
+      expect(getModelPricing(`openai/${id} (high)`)).toEqual(pricing)
+    })
+
     it('matches gpt-6-astra', () => {
       const p = getModelPricing('gpt-6-astra (high)')
       expect(p.inputPerMillion).toBe(10.0)
@@ -155,6 +164,64 @@ describe('token-pricing', () => {
       expect(p.cachePerMillion).toBe(0.2)
     })
 
+    it.each([
+      'Gemini 4 Carbon (High)',
+      'gemini-4-carbon',
+      'google/gemini-4-carbon',
+    ])('applies promo rate for %s through 2026-11-30', (name) => {
+      const p = getModelPricing(name, '2026-11-30')
+      expect(p).toEqual({
+        inputPerMillion: 2.0,
+        outputPerMillion: 10.0,
+        cachePerMillion: 0.1,
+        displayName: 'Gemini 4 Carbon',
+      })
+    })
+
+    it.each([
+      'Gemini 4 Carbon (High)',
+      'gemini-4-carbon',
+      'google/gemini-4-carbon',
+    ])('applies standard rate for %s starting 2026-12-01', (name) => {
+      const p = getModelPricing(name, '2026-12-01')
+      expect(p).toEqual({
+        inputPerMillion: 4.0,
+        outputPerMillion: 20.0,
+        cachePerMillion: 0.2,
+        displayName: 'Gemini 4 Carbon',
+      })
+    })
+
+    it.each([
+      'Gemini 4 Hydrogen (High)',
+      'gemini-4-hydrogen',
+      'google/gemini-4-hydrogen',
+    ])('prices %s at the standard Gemini 4 Hydrogen rates', (name) => {
+      const p = getModelPricing(name, '2026-11-13')
+      expect(p).toEqual({
+        inputPerMillion: 1.5,
+        outputPerMillion: 7.5,
+        cachePerMillion: 0.075,
+        displayName: 'Gemini 4 Hydrogen',
+      })
+      expect(getModelPricing(name, '2027-01-01')).toEqual(p)
+    })
+
+    it.each([
+      'Gemini 4 Neon (High)',
+      'gemini-4-neon',
+      'google/gemini-4-neon',
+    ])('prices %s at the standard Gemini 4 Neon rates', (name) => {
+      const p = getModelPricing(name, '2026-11-19')
+      expect(p).toEqual({
+        inputPerMillion: 3.0,
+        outputPerMillion: 15.0,
+        cachePerMillion: 0.15,
+        displayName: 'Gemini 4 Neon',
+      })
+      expect(getModelPricing(name, '2027-01-01')).toEqual(p)
+    })
+
     it('applies promo rate for Gemini 3.8 Flash before or on 2026-12-31', () => {
       const p = getModelPricing('Gemini 3.8 Flash (High)', '2026-10-26')
       expect(p.inputPerMillion).toBe(0.75)
@@ -253,6 +320,28 @@ describe('token-pricing', () => {
       const cost = calculateTokenCost('DeepSeek V4.1 Flash', 1_000_000, 100_000, 500_000)
       // 0.30 input + 0.12 output + 0.0015 cache
       expect(cost).toBeCloseTo(0.4215, 6)
+    })
+
+    it('computes exact cost for Gemini 4 Carbon across promo and standard dates', () => {
+      const promoCost = calculateTokenCost('Gemini 4 Carbon (High)', 1_000_000, 100_000, 500_000, '2026-11-13')
+      // 2.00 input + 1.00 output + 0.05 cache
+      expect(promoCost).toBeCloseTo(3.05, 6)
+
+      const standardCost = calculateTokenCost('gemini-4-carbon', 1_000_000, 100_000, 500_000, '2026-12-01')
+      // 4.00 input + 2.00 output + 0.10 cache
+      expect(standardCost).toBeCloseTo(6.1, 6)
+    })
+
+    it('computes exact cost for Gemini 4 Hydrogen turn', () => {
+      const cost = calculateTokenCost('Gemini 4 Hydrogen (High)', 1_000_000, 100_000, 500_000, '2026-11-13')
+      // 1.50 input + 0.75 output + 0.0375 cache
+      expect(cost).toBeCloseTo(2.2875, 6)
+    })
+
+    it('computes exact cost for Gemini 4 Neon turn', () => {
+      const cost = calculateTokenCost('Gemini 4 Neon (High)', 1_000_000, 100_000, 500_000, '2026-11-19')
+      // 3.00 input + 1.50 output + 0.075 cache
+      expect(cost).toBeCloseTo(4.575, 6)
     })
   })
 

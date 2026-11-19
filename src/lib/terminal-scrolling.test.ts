@@ -32,9 +32,11 @@ describe('terminal-scrolling preferences', () => {
     }
   })
 
-  it('provides expected defaults: enhanced mode, 1.5 sensitivity, smoothMouseWheel true', () => {
+  it('defaults to 1.20x for Codex and 1.00x for other panes', () => {
     expect(DEFAULT_SCROLLING_PREF.mode).toBe('enhanced')
-    expect(DEFAULT_SCROLLING_PREF.sensitivity).toBe(1.5)
+    expect(effectiveScrollOptions(DEFAULT_SCROLLING_PREF, 'codex').scrollSensitivity).toBe(1.2)
+    expect(effectiveScrollOptions(DEFAULT_SCROLLING_PREF, 'opencode').scrollSensitivity).toBe(1)
+    expect(effectiveScrollOptions(DEFAULT_SCROLLING_PREF).scrollSensitivity).toBe(1)
     expect(DEFAULT_SCROLLING_PREF.smoothMouseWheel).toBe(true)
   })
 
@@ -46,7 +48,7 @@ describe('terminal-scrolling preferences', () => {
     expect(normalizeSensitivity(1.61)).toBe(1.5)
     expect(normalizeSensitivity(1.64)).toBe(1.75)
     expect(normalizeSensitivity(3.5)).toBe(3.0)
-    expect(normalizeSensitivity(NaN)).toBe(1.5)
+    expect(normalizeSensitivity(NaN)).toBe(1)
   })
 
   it('falls back to default when raw json is empty or corrupted', () => {
@@ -107,10 +109,21 @@ describe('terminal-scrolling preferences', () => {
       mode: 'compatibility',
       sensitivity: 2.5,
       smoothMouseWheel: true
-    })
+    }, 'codex')
     expect(compatOpts.mode).toBe('compatibility')
     expect(compatOpts.scrollSensitivity).toBe(1.0)
     expect(compatOpts.smoothScrollDuration).toBe(0)
     expect(compatOpts.enhancedWheel).toBe(false)
+  })
+
+  it('keeps the Codex default for older preferences and persists explicit overrides or inheritance', () => {
+    const legacy = parseStoredScrollingPref(JSON.stringify({ sensitivity: 1.25 }))
+    expect(effectiveScrollOptions(legacy, 'codex').scrollSensitivity).toBe(1.2)
+    expect(effectiveScrollOptions(legacy, 'antigravity').scrollSensitivity).toBe(1.25)
+
+    storeScrollingPref(storageMock, { ...legacy, agentSensitivity: { opencode: 0.95 } })
+    const restored = readStoredScrollingPref(storageMock)
+    expect(effectiveScrollOptions(restored, 'opencode').scrollSensitivity).toBe(0.95)
+    expect(effectiveScrollOptions(restored, 'codex').scrollSensitivity).toBe(1.25)
   })
 })

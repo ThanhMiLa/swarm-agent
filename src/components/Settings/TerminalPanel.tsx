@@ -15,10 +15,14 @@ import { useTerminalPrefStore } from '@/store/terminal-pref-store'
 import { useTerminalTextStore } from '@/store/terminal-text-store'
 import { useStatuslineStore } from '@/store/statusline-store'
 import { useTerminalScrollingStore } from '@/store/terminal-scrolling-store'
+import { TEMPLATES } from '@/lib/templates'
 import {
+  AGENT_SENSITIVITY_STEP,
+  DEFAULT_SCROLLING_PREF,
   SENSITIVITY_MIN,
   SENSITIVITY_MAX,
-  SENSITIVITY_STEP
+  SENSITIVITY_STEP,
+  agentSensitivityOverride
 } from '@/lib/terminal-scrolling'
 import { listAvailableShells, type AvailableShell } from '@/tauri/shell'
 import { Button } from '@/components/ui/button'
@@ -407,7 +411,9 @@ function ScrollingSettings(): ReactElement {
   const scrolling = useTerminalScrollingStore((s) => s.scrolling)
   const setMode = useTerminalScrollingStore((s) => s.setMode)
   const setSensitivity = useTerminalScrollingStore((s) => s.setSensitivity)
+  const setAgentSensitivity = useTerminalScrollingStore((s) => s.setAgentSensitivity)
   const setSmoothMouseWheel = useTerminalScrollingStore((s) => s.setSmoothMouseWheel)
+  const compatibility = scrolling.mode === 'compatibility'
 
   return (
     <section className="rounded-xl border border-border bg-card/40 p-5 sm:p-6">
@@ -460,9 +466,9 @@ function ScrollingSettings(): ReactElement {
         {/* Sensitivity Stepper */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="block text-xs font-medium text-foreground">Sensitivity</span>
+            <span className="block text-xs font-medium text-foreground">Default sensitivity</span>
             <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground/70">
-              Multiplier for scroll speed (default 1.5, active in Enhanced mode).
+              Scroll speed for shell panes and agents without an override (default {DEFAULT_SCROLLING_PREF.sensitivity.toFixed(2)}x).
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -489,6 +495,45 @@ function ScrollingSettings(): ReactElement {
             </Button>
           </div>
         </div>
+
+        <details className="rounded-md border border-pane-border px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-foreground">Per-agent sensitivity</summary>
+          <p className="my-2 text-[11px] leading-snug text-muted-foreground">
+            Applies to panes opened with an agent preset in Enhanced mode.
+          </p>
+          {TEMPLATES.filter((template) => template.command !== null).map((template) => {
+            const override = agentSensitivityOverride(scrolling, template.id)
+            const sensitivity = override ?? scrolling.sensitivity
+            return (
+              <div key={template.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-pane-border py-2">
+                <span className="text-xs text-foreground">{template.name}</span>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" size="sm"
+                    disabled={compatibility || override === undefined}
+                    aria-label={`Use default sensitivity for ${template.name}`}
+                    onClick={() => setAgentSensitivity(template.id)}>
+                    {override === undefined ? 'Using default' : 'Use default'}
+                  </Button>
+                  <Button type="button" variant="outline" size="icon-sm"
+                    disabled={compatibility || sensitivity <= SENSITIVITY_MIN}
+                    aria-label={`Decrease ${template.name} scroll sensitivity`}
+                    onClick={() => setAgentSensitivity(template.id, sensitivity - AGENT_SENSITIVITY_STEP)}>
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="w-14 text-center text-sm tabular-nums text-foreground">
+                    {sensitivity.toFixed(2)}x
+                  </span>
+                  <Button type="button" variant="outline" size="icon-sm"
+                    disabled={compatibility || sensitivity >= SENSITIVITY_MAX}
+                    aria-label={`Increase ${template.name} scroll sensitivity`}
+                    onClick={() => setAgentSensitivity(template.id, sensitivity + AGENT_SENSITIVITY_STEP)}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </details>
 
         {/* Smooth Mouse Wheel Switch */}
         <div className="flex items-start justify-between gap-3">

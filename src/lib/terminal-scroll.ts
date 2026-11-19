@@ -1,5 +1,5 @@
 import type { Terminal, IDisposable } from '@xterm/xterm'
-import type { TerminalScrollingPref } from './terminal-scrolling'
+import { effectiveSensitivity, type TerminalScrollingPref } from './terminal-scrolling'
 import { xtermCore, type XtermMouseEvent } from './terminal-xterm'
 
 export interface WheelEventLike {
@@ -32,6 +32,7 @@ export interface ScrollPolicyDeps {
   term: Terminal
   sendInput: (data: string, isBinary?: boolean) => void
   getPref: () => TerminalScrollingPref
+  getAgentId?: () => string | undefined
   requestFrame?: (cb: () => void) => number
   cancelFrame?: (id: number) => void
 }
@@ -120,7 +121,8 @@ export class TerminalScrollPolicy {
     if (!cellHeight || !core._mouseService || !core.screenElement) return this.native()
     const coords = core._mouseService.getMouseReportCoords(event as unknown as MouseEvent, core.screenElement)
     if (!coords) return this.native()
-    const result = normalizeWheelDelta(event, cellHeight, term.rows, pref.sensitivity, this.remainder, true, term.options.fastScrollSensitivity)
+    const sensitivity = effectiveSensitivity(pref, this.deps.getAgentId?.())
+    const result = normalizeWheelDelta(event, cellHeight, term.rows, sensitivity, this.remainder, true, term.options.fastScrollSensitivity)
     this.remainder = result.remainder
     if (result.lines) {
       const mouse: XtermMouseEvent = { ...coords, button: 4, action: result.lines < 0 ? 0 : 1,

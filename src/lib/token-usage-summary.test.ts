@@ -41,6 +41,21 @@ function project(dailyStats: DailyUsageStats[]): ProjectTokenStats {
 }
 
 describe('model provider usage', () => {
+  it('includes GPT-6.2 Astra and Sol at their own rates in daily and project totals', () => {
+    const stats = day('2026-11-18', [
+      model('codex', 'gpt-6.2-astra (high)'),
+      model('opencode', 'openai/gpt-6.2-sol'),
+    ])
+    const rows = summarizeDailyModelUsage(stats)
+    expect(rows).toMatchObject([
+      { providerId: 'codex', model: 'gpt-6.2-astra (high)', cost: expect.closeTo(12.2) },
+      { providerId: 'codex', model: 'openai/gpt-6.2-sol', cost: expect.closeTo(3.05) },
+    ])
+    expect(summarizeProjectProviderUsage(project([stats]))).toMatchObject([
+      { providerId: 'codex', cost: expect.closeTo(15.25) },
+    ])
+  })
+
   it('ranks provider and model rows by tokens even when the cheaper model has more usage', () => {
     const stats = day('2026-10-31', [
       model('codex', 'gpt-6-astra'),
@@ -73,6 +88,13 @@ describe('model provider usage', () => {
     ['o3-mini', 'codex'],
     ['o1', 'codex'],
     ['Gemini 4 Argon (High)', 'antigravity'],
+    ['Gemini 4 Carbon (High)', 'antigravity'],
+    ['gemini-4-carbon', 'antigravity'],
+    ['Gemini 4 Hydrogen (High)', 'antigravity'],
+    ['google/gemini-4-hydrogen', 'antigravity'],
+    ['Gemini 4 Neon (High)', 'antigravity'],
+    ['gemini-4-neon', 'antigravity'],
+    ['google/gemini-4-neon', 'antigravity'],
     ['google/gemini-3.8-flash', 'antigravity'],
     ['Claude Opus 4.6 (Thinking)', 'claude'],
     ['anthropic/claude-sonnet-5.5', 'claude'],

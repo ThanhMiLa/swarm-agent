@@ -940,7 +940,8 @@ function getOrCreate(id: string): Entry {
         void writeTerminal(id, data).catch(console.warn)
       }
     },
-    getPref: () => useTerminalScrollingStore.getState().scrolling
+    getPref: () => useTerminalScrollingStore.getState().scrolling,
+    getAgentId: () => entries.get(id)?.config.agentId
   })
   term.attachCustomWheelEventHandler((event) => scrollPolicy!.handleWheel(event))
 
@@ -1016,6 +1017,7 @@ export function attachTerminal(id: string, container: HTMLElement, config: Attac
     // out from under the user.
     shellId: entry.config.shellId ?? config.shellId
   }
+  applyEntryScrolling(entry, useTerminalScrollingStore.getState().scrolling)
   refreshDetector(id, entry)
   // Seed the link-resolution cwd from the spawn config. OSC 7 overwrites this as
   // soon as the shell draws its first prompt; until then (and forever, in shells
@@ -1228,6 +1230,7 @@ export function respawnTerminal(id: string, config: AttachConfig): void {
   const entry = entries.get(id)
   if (!entry) return
   entry.config = { ...entry.config, ...config }
+  applyEntryScrolling(entry, useTerminalScrollingStore.getState().scrolling)
   // Agent id may have just changed (agent switch) — rebuild the detector for
   // the new manifest before resetting it below, so reset() acts on the loop
   // that's actually about to watch the new pty, not a stale one for the
@@ -1458,16 +1461,18 @@ useAppearanceStore.subscribe((state) => applyTerminalStyle(state.style))
 /**
  * Push scrolling preferences onto every live terminal.
  */
-export function applyTerminalScrolling(pref: TerminalScrollingPref): void {
-  const opts = effectiveScrollOptions(pref)
-  for (const [, entry] of entries) {
-    entry.term.options.scrollSensitivity = opts.scrollSensitivity
-    entry.term.options.smoothScrollDuration = opts.smoothScrollDuration
-    entry.term.options.enhancedWheel = opts.enhancedWheel
-    if (pref.mode === 'compatibility') {
-      entry.scrollPolicy.clearQueue()
-    }
+function applyEntryScrolling(entry: Entry, pref: TerminalScrollingPref): void {
+  const opts = effectiveScrollOptions(pref, entry.config.agentId)
+  if (entry.term.options.scrollSensitivity !== opts.scrollSensitivity || pref.mode === 'compatibility') {
+    entry.scrollPolicy.clearQueue()
   }
+  entry.term.options.scrollSensitivity = opts.scrollSensitivity
+  entry.term.options.smoothScrollDuration = opts.smoothScrollDuration
+  entry.term.options.enhancedWheel = opts.enhancedWheel
+}
+
+export function applyTerminalScrolling(pref: TerminalScrollingPref): void {
+  for (const entry of entries.values()) applyEntryScrolling(entry, pref)
 }
 
 // Push scrolling preference changes to every live terminal.

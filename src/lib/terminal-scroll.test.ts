@@ -85,7 +85,7 @@ describe('TerminalScrollPolicy with the installed xterm package', () => {
   const disposables: (() => void)[] = []
   afterEach(() => { for (const dispose of disposables.splice(0)) dispose() })
 
-  function fixture(protocol = 'VT200', encoding = 'SGR') {
+  function fixture(protocol = 'VT200', encoding = 'SGR', agentId?: string) {
     const term = new Terminal({ allowProposedApi: true, cols: 240, rows: 24 })
     const core = xtermCore(term)
     core.coreMouseService.activeProtocol = protocol
@@ -98,6 +98,7 @@ describe('TerminalScrollPolicy with the installed xterm package', () => {
     let next = 0
     const sent: { data: string; binary?: boolean }[] = []
     const policy = new TerminalScrollPolicy({ term, getPref: () => pref,
+      getAgentId: () => agentId,
       sendInput: (data, binary) => sent.push({ data, binary }),
       requestFrame: cb => { frames.set(++next, cb); return next },
       cancelFrame: id => { frames.delete(id) } })
@@ -114,6 +115,15 @@ describe('TerminalScrollPolicy with the installed xterm package', () => {
     f.frame()
     expect(f.sent).toEqual([{ data: '\x1b[<65;10;5M'.repeat(3), binary: false }])
   })
+
+  it.each([['codex', 6], ['opencode', 5], ['antigravity', 5]] as const)(
+    'sends the expected number of wheel reports for %s', (agentId, reports) => {
+      const f = fixture('VT200', 'SGR', agentId)
+      f.setPref({ mode: 'enhanced', sensitivity: 1, smoothMouseWheel: true })
+      f.policy.handleWheel(f.wheel({ deltaY: 5, deltaMode: 1 }))
+      expect(f.sent).toEqual([{ data: '\x1b[<65;10;5M'.repeat(reports), binary: false }])
+    }
+  )
 
   it('caps reports per frame without dropping a large flick', () => {
     const f = fixture()
