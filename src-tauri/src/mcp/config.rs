@@ -569,18 +569,24 @@ pub fn private_agent_command<'a>(
     if rest.split_whitespace().any(|arg| arg == flag) {
         return Cow::Borrowed(command);
     }
-    if *supported.get_or_init(|| supports_flag(name, flag)) {
+    if *supported.get_or_init(|| {
+        crate::agents::find_agent_binary(name).is_some_and(|executable| {
+            supports_flag(&executable, flag, &crate::agents::search_dirs())
+        })
+    }) {
         Cow::Owned(format!("{name} {flag}{rest}"))
     } else {
         Cow::Borrowed(command)
     }
 }
 
-fn supports_flag(name: &str, flag: &str) -> bool {
-    let Some(executable) = crate::agents::find_agent_binary(name) else {
-        return false;
-    };
+fn supports_flag(executable: &Path, flag: &str, search_dirs: &[PathBuf]) -> bool {
     let mut command = std::process::Command::new(executable);
+    // GUI launches may find an npm shim in a fallback directory while the
+    // shim's runtime (such as Node.js) is still missing from the inherited PATH.
+    if let Ok(path) = std::env::join_paths(search_dirs) {
+        command.env("PATH", path);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -597,6 +603,25 @@ fn supports_flag(name: &str, flag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn flag_probe_uses_agent_search_dirs_to_resolve_shim_runtime() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        let shim = temp.path().join("codex");
+        let runtime = bin.join("swarm-agent-test-runtime");
+        fs::write(&shim, "#!/usr/bin/env swarm-agent-test-runtime\n").unwrap();
+        fs::write(&runtime, "#!/bin/sh\nprintf '  --no-daemon\\n'\n").unwrap();
+        for executable in [&shim, &runtime] {
+            fs::set_permissions(executable, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        assert!(supports_flag(&shim, "--no-daemon", &[bin]));
+    }
 
     #[test]
     fn migration_replaces_only_app_managed_mcp_entries() {

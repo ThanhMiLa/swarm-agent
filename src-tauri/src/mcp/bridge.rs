@@ -93,12 +93,21 @@ impl ServerHandler for Bridge {
 struct Inactive;
 impl ServerHandler for Inactive {}
 
+fn active_env_value(value: Option<String>) -> Option<String> {
+    let trimmed = value?.trim().to_string();
+    if trimmed.is_empty() || (trimmed.starts_with("${") && trimmed.ends_with('}')) {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (input, output) = stdio();
     let transport = prepare_stdio(input, output).await?;
-    let (Ok(url), Ok(token)) = (
-        std::env::var("SWARM_AGENT_MCP_URL"),
-        std::env::var("SWARM_AGENT_SESSION"),
+    let (Some(url), Some(token)) = (
+        active_env_value(std::env::var("SWARM_AGENT_MCP_URL").ok()),
+        active_env_value(std::env::var("SWARM_AGENT_SESSION").ok()),
     ) else {
         Inactive.serve(transport).await?.waiting().await?;
         return Ok(());
@@ -272,5 +281,32 @@ mod tests {
         serving.abort();
         upstream.cancel().await.unwrap();
         http.abort();
+    }
+
+    #[test]
+    fn active_env_value_rejects_missing_blank_and_unexpanded_placeholders() {
+        assert_eq!(active_env_value(None), None);
+        assert_eq!(active_env_value(Some(String::new())), None);
+        assert_eq!(active_env_value(Some("   ".into())), None);
+        assert_eq!(
+            active_env_value(Some("${SWARM_AGENT_MCP_URL}".into())),
+            None
+        );
+        assert_eq!(
+            active_env_value(Some("${SWARM_AGENT_MCP_URL:-}".into())),
+            None
+        );
+        assert_eq!(
+            active_env_value(Some("  ${SWARM_AGENT_SESSION:-}  ".into())),
+            None
+        );
+        assert_eq!(
+            active_env_value(Some("http://127.0.0.1:4242/mcp".into())),
+            Some("http://127.0.0.1:4242/mcp".into())
+        );
+        assert_eq!(
+            active_env_value(Some("  session-token  ".into())),
+            Some("session-token".into())
+        );
     }
 }

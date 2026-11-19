@@ -68,7 +68,7 @@ pub fn find_agent_binary(exe: &str) -> Option<PathBuf> {
 /// Directories to scan: every PATH segment, plus (on Unix) well-known bin dirs
 /// that a Finder-launched GUI app does not inherit from the login shell —
 /// that's where npm/homebrew put `claude`/`codex`.
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
     let path_var = std::env::var("PATH").unwrap_or_default();
     let mut dirs: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
     dirs.extend(extra_bin_dirs());
