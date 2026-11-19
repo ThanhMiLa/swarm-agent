@@ -3514,6 +3514,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "rand 0.10.2",
+ "reqwest",
  "rmcp-macros",
  "schemars 1.2.1",
  "serde",
@@ -4248,8 +4249,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "swarmterm"
-version = "1.0.4"
+name = "swarm-agent"
+version = "0.0.1"
 dependencies = [
  "axum",
  "chrono",
