@@ -2,7 +2,7 @@
  * Detection rules for Qwen Code, ported to TypeScript from herdr's
  * src/detect/manifests/qwen.toml (manifest version 2026.08.14.1).
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  *
  * Qwen Code keeps its composer visible while responding, so the prompt box is
  * not idle evidence by itself. Its status-prefixed terminal titles are the

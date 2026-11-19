@@ -2,7 +2,7 @@
  * Detection rules for Amp, ported to TypeScript from herdr's
  * src/detect/manifests/amp.toml (manifest version 2026.07.09.1).
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  *
  * Amp's OSC title is the strongest signal: a braille-spinner prefix while
  * working, a "Plugin confirmation needed" title while blocked, and a

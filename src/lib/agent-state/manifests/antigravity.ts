@@ -4,7 +4,7 @@
  * herdr keys this manifest `agy` (the binary); ours is keyed by the
  * workspace template id `antigravity` — the registry convention.
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  */
 import type { Manifest } from '@/lib/agent-state/types'
 

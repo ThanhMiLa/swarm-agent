@@ -3,7 +3,7 @@ import type { DetectionInput, Region } from '@/lib/agent-state/types'
 /**
  * Region extractors over a detection snapshot — a TS port of herdr's region
  * semantics (Apache-2.0, src/detect/manifest.rs:1255-1499 and the Codex
- * prompt-marker helpers at :1357-1422; see THIRD-PARTY-NOTICES.md). Regions
+ * prompt-marker helpers at :1357-1422). Regions
  * slice the snapshot narrowly so rules can anchor to stable TUI chrome
  * instead of scanning the whole screen — herdr's core false-positive defence.
  */

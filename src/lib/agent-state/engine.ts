@@ -3,7 +3,7 @@ import type { DetectionInput, Gate, Manifest, Verdict } from '@/lib/agent-state/
 
 /**
  * herdr-compatible rule evaluation (Apache-2.0 port, src/detect/manifest.rs:
- * 415-496 main loop, 1206-1253 gate matching; see THIRD-PARTY-NOTICES.md).
+ * 415-496 main loop, 1206-1253 gate matching).
  * Compatibility matters because it keeps herdr's battle-tested manifests
  * copy-portable when agent TUIs change: every rule is evaluated (no
  * short-circuit), the highest priority wins, ties keep the FIRST rule in

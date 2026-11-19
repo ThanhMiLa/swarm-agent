@@ -1,7 +1,7 @@
 /**
  * Agent-state detection types. Engine semantics are ported from herdr
  * (https://github.com/herdr-sh/herdr, Apache-2.0, src/detect/manifest.rs,
- * manifest engine version 3) — see THIRD-PARTY-NOTICES.md.
+ * manifest engine version 3).
  */
 
 /** What detection rules can produce. `done` is NOT an engine state — it is

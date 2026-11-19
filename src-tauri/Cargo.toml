@@ -2,7 +2,7 @@
 name = "swarm-agent"
 version = "0.0.1"
 description = "Desktop terminals and cross-CLI coordination for AI coding agents"
-authors = ["Duong Duc Nguyen"]
+authors = ["ThanhMiLa"]
 license = "GPL-3.0-only"
 homepage = "https://github.com/ThanhMiLa/swarm-agent"
 repository = "https://github.com/ThanhMiLa/swarm-agent"

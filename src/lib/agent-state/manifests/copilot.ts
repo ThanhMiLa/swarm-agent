@@ -2,7 +2,7 @@
  * Detection rules for GitHub Copilot CLI, ported to TypeScript from herdr's
  * src/detect/manifests/github-copilot.toml (manifest version 2026.07.07.1).
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  *
  * Copilot's TUI exposes no OSC-title signals, so both rules read the recent
  * screen: a selection dialog (esc + enter hints together) blocks, a lone

@@ -2,7 +2,7 @@
  * Detection rules for codex, ported to TypeScript from herdr's
  * src/detect/manifests/codex.toml (manifest version 2026.08.09.1).
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  *
  * Regex translation from Rust `regex` syntax: `\x{2733}` → `\u{2733}` with
  * the `u` flag; inline `(?i)`/`(?m)` → RegExp flags; `\A` → `^` (no `m`).

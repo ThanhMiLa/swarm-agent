@@ -2,7 +2,7 @@
  * Detection rules for Gemini CLI, ported to TypeScript from herdr's
  * src/detect/manifests/gemini.toml (manifest version 2026.06.10.1).
  * herdr is licensed under the Apache License 2.0; this derived file is
- * modified from the original. See THIRD-PARTY-NOTICES.md at the repo root.
+ * modified from the original.
  */
 import type { Manifest } from '@/lib/agent-state/types'
 
