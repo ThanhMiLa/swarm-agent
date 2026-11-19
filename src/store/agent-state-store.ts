@@ -6,7 +6,7 @@ import type { AgentEngineState } from '@/lib/agent-state/types'
  * Per-terminal agent state, keyed by terminalId. Runtime state OUTSIDE the
  * layout tree — same family as terminal-activity-store. Written by each
  * pane's AgentStateDetector; read by the navbar terminal list, workspace
- * tabs, and the War Room members tab. The seen-bit lives here because it is
+ * tabs, and the Agent Team members tab. The seen-bit lives here because it is
  * a property of the published state's lifetime, not of any one component:
  * a completion (working|blocked → idle) while the pane isn't being watched
  * flips seen=false, which the UI renders as "done" until the pane is

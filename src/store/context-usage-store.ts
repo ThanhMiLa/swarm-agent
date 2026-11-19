@@ -3,7 +3,7 @@ import { NO_CHANGE, applyContextSample } from '@/lib/context-usage'
 
 /**
  * Per-terminal context-window usage (rounded %), keyed by terminalId, fed by
- * the `agent:context` event that the `/status` probe of `swarmterm --statusline`
+ * the `agent:context` event that the `/status` probe of `swarm-agent --statusline`
  * produces. Runtime state that lives OUTSIDE the layout tree — like
  * shell-mark-store and the registry's xterm instances — so a pane re-parenting
  * (split collapse) keeps its chip, and the registry clears it on kill/respawn

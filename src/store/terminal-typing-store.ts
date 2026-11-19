@@ -4,11 +4,11 @@ import { classifyInput, type InputKind } from '@/lib/terminal-typing'
 /**
  * Per-terminal "the user is typing here" signal, keyed by terminalId. Runtime
  * state OUTSIDE the layout tree, exactly like terminal-activity-store (which
- * tracks pty OUTPUT — this one tracks user INPUT, and the War Room delivery
+ * tracks pty OUTPUT — this one tracks user INPUT, and the Agent Team delivery
  * scheduler needs both: a pane can be output-idle and still mid-sentence).
  *
  * Written from `sendInput` in terminal-registry, the single place that sees
- * genuine user input. War Room deliveries write through `writeTerminal`
+ * genuine user input. Agent Team deliveries write through `writeTerminal`
  * directly and never reach that hook, so a nudge can never mark its own
  * recipient as "the user is typing".
  */
@@ -18,7 +18,7 @@ export interface TerminalTypingStore {
   /** True while a line has been typed and not yet submitted or abandoned. */
   dirty: Record<string, boolean>
   noteInput: (terminalId: string, data: string, kindOverride?: InputKind) => void
-  /** "Done typing here" — used by the Deliver-now buttons, by pane disposal,
+  /** "Done typing here" — used by pane disposal
    *  and by `noteInput` itself on a submit, all of which want the same thing:
    *  drop this terminal's entries. */
   clearTyping: (terminalId: string) => void
@@ -32,14 +32,14 @@ export const useTerminalTypingStore = create<TerminalTypingStore>((set, get) => 
     // Most input can be classified from its bytes. Shift+Enter is the one
     // intentional exception: it writes LF (normally a line-ending byte) but
     // semantically keeps an agent prompt open, so the registry marks it as an
-    // edit to keep War Room delivery held behind the multi-line draft.
+    // edit to keep Agent Team delivery held behind the multi-line draft.
     const kind = kindOverride ?? classifyInput(data)
     if (kind === 'submit') {
       // "The line is done, nothing pending in this pane" is exactly what
       // clearTyping means, so share its logic rather than duplicating it.
       // Clearing lastKeyAt (not just dirty) matters: leaving it stamped would
       // mean the user — who is by definition focused in this pane right after
-      // pressing Enter — re-arms shouldDeferDelivery's focused-and-recent arm
+      // pressing Enter — re-arms the recent input guard
       // on every submit, holding the pane for a further TYPING_QUIET_MS when
       // the line it was guarding no longer exists.
       get().clearTyping(terminalId)

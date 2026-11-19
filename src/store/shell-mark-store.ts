@@ -11,7 +11,7 @@ import { applyShellMark, type CommandState, type ShellMark } from '@/lib/shell-m
  * non-transition (first-prompt `D;0`, an empty Enter redrawing the prompt, a
  * stray C). We then return the SAME state object to `set`, which zustand
  * treats as "nothing changed" and skips every listener — that is the whole
- * point of the machine returning undefined: subscribers (git-refresh, later
+ * point of the machine returning undefined: subscribers (such as
  * notifications) only ever wake for real transitions, and a consumer that
  * compares `byId[id].last` by identity gets a clean one-shot "finished" edge.
  */

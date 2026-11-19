@@ -14,9 +14,6 @@ import {
 } from '@/lib/layout-tree'
 import type { ShellId } from '@/lib/terminal-pref'
 import { DEFAULT_TEMPLATE_ID } from '@/lib/templates'
-import { clearWorktree } from '@/tauri/git'
-import { isTransientLock } from '@/lib/worktree-cleanup'
-import { awaitTerminalRelocated } from '@/lib/terminal-registry'
 import { workspaceNameFor } from '@/lib/workspace-name'
 
 /** A workspace: a named binary split-tree of terminal panes. */
@@ -27,43 +24,16 @@ export interface Workspace {
   cwd: string
   layout: LayoutNode
   focusedLeafId: string
-  /** Whether broadcast (keystroke fan-out) is armed for this workspace. */
-  broadcastActive: boolean
-  /** Leaf ids that receive broadcast keystrokes while `broadcastActive`. */
-  broadcastLeafIds: string[]
-  /** Enable MCP worktree tools for every terminal in this workspace. */
-  worktreeMode: boolean
 }
 
-/** What the setup wizard collects to build a new workspace. */
 export interface CreateWorkspaceConfig {
   cwd: string
-  /** Number of terminal panes; must be a value from TERMINAL_COUNTS. */
   terminalCount: number
-  /** One agent id per pane, in build order. Short arrays are padded with
-   *  DEFAULT_TEMPLATE_ID so `agentIds.length` need not equal `terminalCount`,
-   *  but the caller should keep them in sync. */
   agentIds: string[]
-  /** Enable MCP worktree tools for every terminal in this workspace. */
-  worktreeMode?: boolean
-  /** Per-pane worktree assignment, index-aligned with agentIds; null = pane
-   *  stays at the workspace cwd. Created by the composer BEFORE the store is
-   *  touched, so leaves are born with their isolation — no post-hoc rebinding. */
-  paneWorktrees?: ({ path: string; branch: string } | null)[]
   /** Sessions to resume, one extra pane each, appended after the stepper
    *  panes. `cwd` is the session's recorded directory — resume commands only
-   *  find their session when run from where it was recorded, so these panes
-   *  are exempt from worktree provisioning. */
+   *  find their session when run from where it was recorded. */
   resumePanes?: Array<{ agentId: string; sessionId: string; cwd: string }>
-}
-
-/** One worktree to clear: the bound leaf, its worktree path + branch, and the repo root. */
-export interface ClearTarget {
-  leafId: string
-  terminalId: string
-  path: string
-  branch: string
-  repoRoot: string
 }
 
 export interface AppState {
@@ -75,7 +45,7 @@ export interface AppState {
   welcomeOpen: boolean
   /** Whether the Welcome tab (vs the active workspace) is the foreground view. */
   welcomeFocused: boolean
-  /** Draft working folder shown in the Welcome form (shared with the title-bar search). */
+  /** Draft working folder shown in the Welcome form. */
   welcomeFolder: string
   /**
    * Terminal the OS drag is currently hovering, for the drop-target ring.
@@ -96,7 +66,7 @@ export interface AppActions {
   moveWorkspace: (fromId: string, toId: string) => void
   setFocusedLeaf: (leafId: string) => void
   /** Jump to a terminal wherever it lives: activate its workspace AND focus
-   *  its pane. No-op for unknown ids. (War Room click-to-navigate.) */
+   *  its pane. No-op for unknown ids. (Agent Team click-to-navigate.) */
   revealTerminal: (terminalId: string) => void
   setDropTarget: (terminalId: string | null) => void
   splitPane: (leafId: string, direction: Direction) => void
@@ -106,19 +76,6 @@ export interface AppActions {
   setPaneAgent: (leafId: string, agentId: string) => void
   setPaneCwd: (leafId: string, cwd: string | undefined) => void
   setPaneShell: (leafId: string, shellId: ShellId) => void
-  spawnWorktreePane: (p: {
-    requesterTerminalId: string
-    path: string
-    branch: string
-    agentId?: string
-    prompt: string
-  }) => void
-  clearWorktreeBinding: (path: string) => void
-  clearWorktrees: (targets: ClearTarget[]) => Promise<void>
-  toggleBroadcast: () => void
-  toggleBroadcastMember: (leafId: string) => void
-  selectAllBroadcast: () => void
-  clearBroadcast: () => void
 }
 
 export type AppStore = AppState & AppActions
@@ -140,11 +97,6 @@ function arrayMove<T>(list: T[], from: number, to: number): T[] {
 /** A plain-shell leaf — no template command. Used when splitting a pane. */
 function makeLeaf(): LeafNode {
   return { type: 'leaf', id: uid(), terminalId: uid() }
-}
-
-/** Compare paths ignoring separator style — Windows sources mix / and \. */
-function samePath(a: string | undefined, b: string): boolean {
-  return a !== undefined && a.replace(/\\/g, '/') === b.replace(/\\/g, '/')
 }
 
 /** Return the active workspace, or `undefined` if it cannot be resolved. */
@@ -200,9 +152,6 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
       const resumePanes = config.resumePanes ?? []
       const makeWizardLeaf = (): LeafNode => {
         const i = paneIndex++
-        // Leaves past the stepper count are resume panes: they spawn at the
-        // session's recorded cwd and never get a worktree (the resume lookup
-        // is cwd-scoped in every CLI).
         const resume = i >= config.terminalCount ? resumePanes[i - config.terminalCount] : undefined
         if (resume) {
           return {
@@ -214,13 +163,11 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
             cwd: resume.cwd
           }
         }
-        const wt = config.paneWorktrees?.[i] ?? null
         return {
           type: 'leaf',
           id: uid(),
           terminalId: uid(),
           agentId: config.agentIds[i] ?? DEFAULT_TEMPLATE_ID,
-          ...(wt ? { cwd: wt.path, worktreeBranch: wt.branch } : {})
         }
       }
       const layout = paneLayoutFor(config.terminalCount + resumePanes.length, makeWizardLeaf, uid)
@@ -233,10 +180,7 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
         ),
         cwd: config.cwd,
         layout,
-        focusedLeafId: collectLeaves(layout)[0].id,
-        broadcastActive: false,
-        broadcastLeafIds: [],
-        worktreeMode: config.worktreeMode ?? false
+        focusedLeafId: collectLeaves(layout)[0].id
       }
       return {
         workspaces: [...s.workspaces, ws],
@@ -340,23 +284,14 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
     }
     set((s) =>
       mapActive(s, (w) => {
-        const leaves = collectLeaves(layout)
-        const ids = new Set(leaves.map((l) => l.id))
-        const focusedLeafId = ids.has(w.focusedLeafId) ? w.focusedLeafId : leaves[0].id
-        return {
-          ...w,
-          layout,
-          focusedLeafId,
-          broadcastLeafIds: w.broadcastLeafIds.filter((id) => ids.has(id))
-        }
+        const focusedLeafId = findLeaf(layout, w.focusedLeafId)?.id ?? collectLeaves(layout)[0].id
+        return { ...w, layout, focusedLeafId }
       })
     )
   },
 
   // Reorder panes in the active workspace: move `fromLeafId` to `toLeafId`'s
-  // slot, reflowing the rest. reorderLeaves moves whole leaf nodes, so
-  // focusedLeafId and broadcastLeafIds (which point at leaf ids) stay valid and
-  // follow the terminals — no extra bookkeeping needed.
+  // slot, reflowing the rest. Focus follows the same leaf ID.
   reorderPane: (fromLeafId, toLeafId) =>
     set((s) =>
       mapActive(s, (w) => {
@@ -378,154 +313,24 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
         ...w,
         layout: updateLeaf(w.layout, leafId, {
           agentId,
-          initialPrompt: undefined,
           resumeSessionId: undefined
         })
       }))
     ),
 
-  // Re-pointing a pane's folder must drop any stale worktree binding — otherwise
-  // the header keeps showing the old branch chip and a later "Clear worktree"
-  // would target a path the pane no longer runs in. Matches clearWorktreeBinding's
-  // patch shape (also drops a stale initialPrompt written for the old folder, and
-  // resumeSessionId — a session can't be found from a different cwd).
   setPaneCwd: (leafId, cwd) =>
     set((s) =>
       mapActive(s, (w) => ({
         ...w,
         layout: updateLeaf(w.layout, leafId, {
           cwd,
-          worktreeBranch: undefined,
-          initialPrompt: undefined,
           resumeSessionId: undefined
         })
       }))
     ),
 
   setPaneShell: (leafId, shellId) =>
-    set((s) => mapActive(s, (w) => ({ ...w, layout: updateLeaf(w.layout, leafId, { shellId }) }))),
-
-  // Worker panes are spawned by the backend's worktree.spawn MCP tool: split
-  // the *requester's* leaf (which may live in a non-active workspace, so this
-  // deliberately avoids mapActive) and let the normal pane-mount path spawn
-  // the pty inside the worktree with the task brief.
-  spawnWorktreePane: (p) =>
-    set((s) => {
-      const ws = selectWorkspaceByTerminalId(s, p.requesterTerminalId)
-      if (!ws || !ws.worktreeMode) return {}
-      const requester = collectLeaves(ws.layout).find(
-        (l) => l.terminalId === p.requesterTerminalId
-      )
-      if (!requester) return {}
-      const newLeaf: LeafNode = {
-        type: 'leaf',
-        id: uid(),
-        terminalId: uid(),
-        // Fall back to the requester's agent; a plain-shell requester yields a
-        // plain shell in the worktree — visible, never a silent drop.
-        agentId: p.agentId ?? requester.agentId,
-        cwd: p.path,
-        worktreeBranch: p.branch,
-        initialPrompt: p.prompt
-      }
-      return {
-        workspaces: s.workspaces.map((w) =>
-          w.id === ws.id
-            ? {
-                ...w,
-                layout: splitLeaf(w.layout, requester.id, 'horizontal', newLeaf, uid()),
-                focusedLeafId: newLeaf.id
-              }
-            : w
-        )
-      }
-    }),
-
-  clearWorktreeBinding: (path) =>
-    set((s) => ({
-      workspaces: s.workspaces.map((w) => {
-        const bound = collectLeaves(w.layout).filter((l) => samePath(l.cwd, path))
-        if (bound.length === 0) return w
-        let layout = w.layout
-        for (const leaf of bound) {
-          // The worktree directory is gone after worktree.remove, so leaving
-          // cwd/initialPrompt pointed at it would respawn into a dead path (or
-          // replay the original prompt) next time the pane's pty restarts.
-          // Clearing cwd lets TerminalPane's existing respawn effect relocate
-          // the pane back to the workspace folder, same as any other pane.
-          layout = updateLeaf(layout, leaf.id, {
-            worktreeBranch: undefined,
-            cwd: undefined,
-            initialPrompt: undefined
-          })
-        }
-        return { ...w, layout }
-      })
-    })),
-
-  clearWorktrees: async (targets) => {
-    const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-    for (const t of targets) {
-      // Relocate the pane home — its respawn kills the pty holding the worktree
-      // cwd lock and restarts a shell at the repo root.
-      get().clearWorktreeBinding(t.path)
-      // Wait for that relocation to complete (old pty dead) BEFORE deleting the
-      // directory: deleting under a live pty guts the dir then fails rmdir on
-      // Windows, leaving a husk. Timeout-backstopped inside the helper.
-      await awaitTerminalRelocated(t.terminalId)
-      for (let attempt = 0; ; attempt++) {
-        try {
-          await clearWorktree(t.repoRoot, t.path, t.branch)
-          break
-        } catch (e) {
-          const msg = String(e)
-          if (attempt < 5 && isTransientLock(msg)) {
-            await delay(150)
-            continue
-          }
-          console.warn(`clear worktree failed for ${t.branch}:`, msg)
-          break
-        }
-      }
-    }
-  },
-
-  toggleBroadcast: () =>
-    set((s) =>
-      mapActive(s, (w) => {
-        const active = !w.broadcastActive
-        return {
-          ...w,
-          broadcastActive: active,
-          // Turning on selects every pane (the common "drive all" case); the
-          // user narrows from there. Turning off clears the group.
-          broadcastLeafIds: active ? collectLeaves(w.layout).map((l) => l.id) : []
-        }
-      })
-    ),
-
-  // Group membership can be edited even while broadcast is off; turning it on
-  // via toggleBroadcast re-selects all panes, so off-mode edits are harmless.
-  toggleBroadcastMember: (leafId) =>
-    set((s) =>
-      mapActive(s, (w) => {
-        if (!findLeaf(w.layout, leafId)) return w
-        const has = w.broadcastLeafIds.includes(leafId)
-        return {
-          ...w,
-          broadcastLeafIds: has
-            ? w.broadcastLeafIds.filter((id) => id !== leafId)
-            : [...w.broadcastLeafIds, leafId]
-        }
-      })
-    ),
-
-  selectAllBroadcast: () =>
-    set((s) =>
-      mapActive(s, (w) => ({ ...w, broadcastLeafIds: collectLeaves(w.layout).map((l) => l.id) }))
-    ),
-
-  clearBroadcast: () => set((s) => mapActive(s, (w) => ({ ...w, broadcastLeafIds: [] })))
+    set((s) => mapActive(s, (w) => ({ ...w, layout: updateLeaf(w.layout, leafId, { shellId }) })))
 })
 
 export const useAppStore = create<AppStore>()(appStoreCreator)
