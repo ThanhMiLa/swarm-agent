@@ -52,14 +52,7 @@ export interface WorkspaceTemplate {
   /** Store scanner feeding "Resume sessions"; absent ⇒ the agent has no
    *  scanner yet and never appears in that list (fail-open by construction). */
   sessionScanner?: SessionScannerKind
-  /** Flag that makes the CLI run a startup prompt and STAY interactive
-   *  (worktree.spawn briefs). Absent ⇒ the prompt is passed positionally —
-   *  verified fine for claude/codex, but gemini-heritage CLIs treat a
-   *  positional prompt as one-shot and exit. */
-  spawnPromptFlag?: string
-  /** Swarmterm writes this CLI's MCP config automatically at boot (L3).
-   *  Everything else gets the manual hint in the War Room members list. */
-  mcpAutoEnrolled?: boolean
+
 }
 
 export const TEMPLATES: WorkspaceTemplate[] = [
@@ -74,7 +67,6 @@ export const TEMPLATES: WorkspaceTemplate[] = [
     // which building on `base` guarantees.
     resume: { idPattern: UUID_RE, buildCommand: (base, id) => `${base} --resume ${id}` },
     sessionScanner: 'claude-jsonl',
-    mcpAutoEnrolled: true
   },
   {
     id: 'codex',
@@ -86,7 +78,6 @@ export const TEMPLATES: WorkspaceTemplate[] = [
     // `codex resume <id>` is a subcommand, not a flag.
     resume: { idPattern: UUID_RE, buildCommand: (base, id) => `${base} resume ${id}` },
     sessionScanner: 'codex-rollout',
-    mcpAutoEnrolled: true
   },
   {
     id: 'antigravity',
@@ -128,10 +119,6 @@ export const TEMPLATES: WorkspaceTemplate[] = [
     icon: qwenIcon,
     resume: { idPattern: UUID_RE, buildCommand: (base, id) => `${base} --resume ${id}` },
     sessionScanner: 'qwen-chats',
-    // -i / --prompt-interactive: run the brief, stay interactive (a
-    // positional prompt would run one-shot and exit).
-    spawnPromptFlag: '-i',
-    mcpAutoEnrolled: true
   },
   {
     id: 'amp',
@@ -150,7 +137,6 @@ export const TEMPLATES: WorkspaceTemplate[] = [
     executable: 'gemini',
     icon: geminiIcon,
     // No resume: gemini has no resume-by-id flag (herdr has none either).
-    spawnPromptFlag: '-i'
   },
   {
     id: 'cursor',
@@ -200,8 +186,8 @@ export function agentCommand(agentId: string | undefined): string | undefined {
  * True only when the template runs NO command — the pane is the user's own
  * shell. Deliberately NOT "has no detection manifest" (`manifestForAgent`):
  * `omp` ships without a manifest yet runs `omp`, so a gate keyed on the
- * manifest would treat its hour-long run as a plain-shell command (Git-panel
- * refresh + "Command finished" chime for an agent session). Exact lookup on
+ * manifest would play the plain-shell "Command finished" chime for an agent
+ * session. Exact lookup on
  * purpose — `templateById`'s unknown-id fallback to `terminal` would read a
  * typo as a plain shell, the opposite of fail-closed.
  */

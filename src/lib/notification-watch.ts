@@ -71,7 +71,7 @@ export function startNotificationWatch(deps: NotificationWatchDeps): () => void 
   }
 
   const fire = (firedId: string): void => {
-    // Flush the whole burst at once: N War Room panes finishing in the same
+    // Flush the whole burst at once: N Agent Team panes finishing in the same
     // detector tick used to stack N chimes on the shared AudioContext and
     // N banners. The firing id is included by identity, never via the clock.
     const now = deps.now()

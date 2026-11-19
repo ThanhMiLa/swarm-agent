@@ -1,6 +1,6 @@
 export interface Shortcut {
   description: string
-  /** Each element is one keycap token: 'Ctrl', 'Shift', 'B', '+ Click', etc. */
+  /** Each element is one keycap token, such as 'Ctrl' or 'Shift'. */
   keys: string[]
 }
 
@@ -13,7 +13,6 @@ export interface KeybindingGroup {
 /** Window-level app shortcuts App.tsx listens for. */
 export type AppShortcutAction =
   | 'toggle-navbar'
-  | 'toggle-broadcast'
   | 'find-in-terminal'
   | 'jump-to-attention'
 
@@ -40,7 +39,7 @@ export function matchAppShortcut(
   const opposite = isMac ? event.ctrlKey : event.metaKey
   if (!modifier || opposite || event.altKey) return null
   const key = event.key.toLowerCase()
-  if (key === 'b') return event.shiftKey ? 'toggle-broadcast' : 'toggle-navbar'
+  if (key === 'b' && !event.shiftKey) return 'toggle-navbar'
   // No shifted variant exists for find, so Shift+F falls through untouched
   // (returns null) rather than claiming a binding nothing implements.
   if (key === 'f' && !event.shiftKey) return 'find-in-terminal'
@@ -53,22 +52,12 @@ export function matchAppShortcut(
 // If you change a binding in App.tsx, update this list to match.
 export function getShortcutGroups(isMac: boolean): KeybindingGroup[] {
   const mod = isMac ? '⌘' : 'Ctrl'
-  const alt = isMac ? '⌥' : 'Alt'
   return [
     {
       id: 'terminal',
       label: 'Terminal',
       entries: [
         { description: 'Insert line break', keys: ['Shift', 'Enter'] },
-      ],
-    },
-    {
-      id: 'broadcast',
-      label: 'Broadcast',
-      entries: [
-        { description: 'Toggle broadcast mode',      keys: [mod, 'Shift', 'B'] },
-        { description: 'Exit broadcast mode',        keys: ['Esc'] },
-        { description: 'Add/remove pane from group', keys: [alt, '+ Click'] },
       ],
     },
     {

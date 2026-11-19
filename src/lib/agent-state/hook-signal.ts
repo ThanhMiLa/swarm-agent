@@ -1,7 +1,7 @@
 import type { AgentEngineState, Verdict } from '@/lib/agent-state/types'
 
 /**
- * Precedence between Claude Code's own hooks (`swarmterm --hook`, delivered
+ * Precedence between Claude Code's own hooks (`swarm-agent --hook`, delivered
  * as `agent:hook` events) and the screen-scrape verdict. A hook is an exact
  * edge — Claude itself told us the turn ended or a permission prompt opened —
  * while the scrape is a heuristic guess over a redraw. So a live hook is

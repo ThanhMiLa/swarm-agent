@@ -25,10 +25,6 @@ export interface LeafNode {
   cwd?: string
   /** Per-pane shell override. Absent means use the global default shell. */
   shellId?: ShellId
-  /** Branch of the git worktree this pane was spawned into via worktree.spawn. */
-  worktreeBranch?: string
-  /** One-shot task brief appended (shell-quoted) to the agent command at spawn. */
-  initialPrompt?: string
   /** Session id this pane resumes at spawn (claude/codex/opencode session
    *  recorded on disk by the CLI itself). Cleared on agent switch. */
   resumeSessionId?: string
@@ -63,7 +59,7 @@ export function updateLeaf(
   patch: Partial<
     Pick<
       LeafNode,
-      'agentId' | 'cwd' | 'shellId' | 'worktreeBranch' | 'initialPrompt' | 'resumeSessionId'
+      'agentId' | 'cwd' | 'shellId' | 'resumeSessionId'
     >
   >
 ): LayoutNode {
@@ -111,7 +107,7 @@ function placeLeaves(tree: LayoutNode, leaves: LeafNode[], cursor: { i: number }
  * yields `[B,C,A,D]`, not `[C,B,A,D]`.
  *
  * Moving whole leaf nodes (with their `terminalId` and per-pane overrides) means
- * anything keyed by leaf id — focus, broadcast membership — follows the terminal
+ * focus and anything else keyed by leaf ID follow the terminal
  * for free, and the live xterm (keyed by terminalId in the registry) is only
  * re-parented between slots, never killed. Returns the input unchanged (same
  * reference) when `fromId === toId` or either leaf is absent; never mutates it.

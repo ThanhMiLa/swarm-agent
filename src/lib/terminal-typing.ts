@@ -1,8 +1,8 @@
 /**
  * Classifies one `onData` payload from xterm — one piece of genuine user
- * input — so the War Room nudge guard can tell "mid-line" from "line
+ * input — so the Agent Team nudge guard can tell "mid-line" from "line
  * finished". Pure; the store applies the result and the delivery scheduler
- * reads it. See `shouldDeferDelivery` in war-room-nudge.ts.
+ * reads it.
  */
 export type InputKind = 'edit' | 'submit' | 'nav'
 
@@ -31,7 +31,7 @@ export function classifyInput(data: string): InputKind {
   // point of the mode. Without this arm a pasted `deploy prod` reads as
   // navigation (dirty never set) and a two-line paste reads as a submit
   // (dirty CLEARED) while the text is still sitting unsent on the line, so a
-  // War Room nudge would be typed over it. The inner text is irrelevant: the
+  // Agent Team nudge would be typed over it. The inner text is irrelevant: the
   // app inserts it literally, which is by definition an unsubmitted line. An
   // empty frame cannot occur (the Ctrl/Cmd+V path gates on non-empty text)
   // and over-holding is this module's safe direction, so it is `edit` too.

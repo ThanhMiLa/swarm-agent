@@ -25,7 +25,7 @@ export interface TerminalScrollingPref {
   smoothMouseWheel: boolean
 }
 
-export const SCROLLING_STORAGE_KEY = 'swarmterm:terminal-scrolling'
+export const SCROLLING_STORAGE_KEY = 'swarm-agent:terminal-scrolling'
 
 export const SENSITIVITY_MIN = 0.25
 export const SENSITIVITY_MAX = 3.0

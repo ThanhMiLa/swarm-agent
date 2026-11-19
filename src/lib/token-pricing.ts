@@ -1,5 +1,5 @@
 /**
- * Token Pricing Engine for Swarmterm
+ * Token Pricing Engine for SwarmAgent
  *
  * Implements published pricing from:
  * - OpenAI (Codex): gpt-6.2-astra, gpt-6.2-sol, gpt-6.1-sol, gpt-6.1-terra,

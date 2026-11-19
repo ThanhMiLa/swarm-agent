@@ -1,3 +1,4 @@
+import { isAgentComposer } from '@/lib/agent-team-composer'
 import { Terminal, type ILink, type ILinkHandler, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -21,8 +22,7 @@ import { useAppearanceStore } from '@/store/appearance-store'
 import type { Style } from '@/lib/appearance'
 import { useTerminalTextStore } from '@/store/terminal-text-store'
 import { useTerminalTitleStore } from '@/store/terminal-title-store'
-import { resolveBroadcastTargets } from '@/lib/broadcast-input'
-import { useAppStore, selectWorkspaceByTerminalId, selectFocusedTerminalId } from '@/store/app-store'
+import { useAppStore, selectFocusedTerminalId } from '@/store/app-store'
 import type { TerminalTextPref } from '@/lib/terminal-text'
 import { decideClipboardAction, isMacPlatform } from '@/lib/terminal-clipboard'
 import { isWindowsPlatform } from '@/lib/platform'
@@ -38,7 +38,6 @@ import { parseFileUrl } from '@/lib/file-url'
 import { parseOsc52 } from '@/lib/osc52'
 import { parseShellMark } from '@/lib/shell-marks'
 import { isPlainShellPane } from '@/lib/templates'
-import { sanitizePromptText } from '@/lib/prompt-sanitize'
 import { detectPathCandidates, parsePathSuffix } from '@/lib/path-link-parse'
 import { classifyOscLink, openPathLocation } from '@/lib/terminal-link-actions'
 import { openUrl } from '@/tauri/opener'
@@ -152,8 +151,7 @@ export interface AttachConfig {
   cwd?: string
   shellId?: import('@/lib/terminal-pref').ShellId
   initialCommand?: string
-  worktreeMode?: boolean
-  repoRoot?: string
+  workspaceId?: string
   agentId?: string
 }
 
@@ -483,29 +481,11 @@ function getOrCreate(id: string): Entry {
     if (mark !== null) useShellMarkStore.getState().applyMark(id, mark, Date.now())
     return true
   })
-  // Fan out to the broadcast group when this terminal is an armed member;
-  // otherwise this is the only target ([id]), so behaviour is unchanged. onData
-  // fires only for the terminal the user is typing in, so `id` is always the
-  // source of `data` — but every target pty in `targets` receives the SAME
-  // characters and ends up holding the SAME half-typed line, so the War Room
-  // typing signal has to be recorded per target, not just for the source.
-  // Recorded here (rather than from a listener on each target) because this is
-  // the one hook that sees genuine user input for the whole fan-out group: War
-  // Room deliveries go through `writeTerminal` directly and bypass `onData`,
-  // so a nudge can never mark its own recipient as "user typing". Paste
-  // (term.paste) flows through onData too, so it fans out — and gets recorded
-  // — for free. Each target pty echoes independently: this is real broadcast,
-  // not a text mirror.
+  // Track user input and paste so Agent Team leaves in-progress drafts alone.
+  // Agent Team writes directly to the PTY and bypasses this typing signal.
   const sendInput = (data: string, kindOverride?: 'edit' | 'submit' | 'nav'): void => {
-    const state = useAppStore.getState()
-    const ws = selectWorkspaceByTerminalId(state, id)
-    const targets = ws
-      ? resolveBroadcastTargets(ws.layout, ws.broadcastActive, ws.broadcastLeafIds, id)
-      : [id]
-    for (const target of targets) {
-      useTerminalTypingStore.getState().noteInput(target, data, kindOverride)
-      void writeTerminal(target, data).catch(console.warn)
-    }
+    useTerminalTypingStore.getState().noteInput(id, data, kindOverride)
+    void writeTerminal(id, data).catch(console.warn)
   }
   let scrollPolicy: TerminalScrollPolicy | undefined
   term.onData((data) => {
@@ -791,10 +771,8 @@ function getOrCreate(id: string): Entry {
 
   /**
    * The single activation path for every link kind and every source (OSC 8,
-   * WebLinksAddon, the path provider). URLs go to the OS default browser — the
-   * in-app preview column stays reserved for the `browser.open_preview` MCP
-   * tool, i.e. for pages an agent decides to show you, not for every link you
-   * click. Paths need Cmd/Ctrl because launching an external editor takes OS
+   * WebLinksAddon, the path provider). URLs go to the OS default browser.
+   * Paths need Cmd/Ctrl because launching an external editor takes OS
    * focus away from the app; a path never reaches the OS default opener, which
    * would make a misclick on a script execute it.
    */
@@ -869,15 +847,15 @@ function getOrCreate(id: string): Entry {
   term.attachCustomKeyEventHandler((event) => {
     // xterm maps Enter to CR without looking at Shift. Agent composers use LF
     // for a literal line break, so own this exact chord and send it through
-    // the normal input path (including broadcast) once. The explicit `edit`
-    // semantic keeps War Room deliveries behind the still-open draft.
+    // the normal input path once. The explicit `edit`
+    // semantic keeps Agent Team deliveries behind the still-open draft.
     if (isSoftLineBreakKey(event)) {
       event.preventDefault()
       sendInput('\n', 'edit')
       return false
     }
     // App.tsx's window-capture listener calls `event.preventDefault()` for a
-    // claimed app shortcut (Cmd/Ctrl+B, +Shift+B, +F — see keybindings.ts),
+    // claimed app shortcut (see keybindings.ts),
     // but that only suppresses the BROWSER's default action; it does nothing
     // to xterm's OWN key handling, which lives entirely inside this same
     // event's later `_keyDown` — that method never checks
@@ -1128,9 +1106,8 @@ export function isAnyTerminalFocused(): boolean {
 /**
  * Type `text` into a terminal as if the user pasted it. Routed through
  * `term.paste` rather than `writeTerminal` on purpose: paste flows through
- * `onData`, so it picks up the broadcast fan-out above for free instead of
- * duplicating that rule here. Also gets bracketed-paste framing, so a shell
- * treats the text as literal input and never runs it on its own.
+ * `onData` for typing tracking and bracketed-paste framing, so a shell
+ * treats the text as literal input.
  *
  * Resets the IME input segment first (see `Entry.resetInputSegment`):
  * `term.paste` writes straight to the pty and clears xterm's textarea itself,
@@ -1145,55 +1122,29 @@ export function pasteIntoTerminal(id: string, text: string): void {
   entry.term.paste(text)
 }
 
-/**
- * Deliver a War Room payload's BODY to one pty: bracketed-paste framing when
- * the foreground app enabled it (agent CLIs do — the text arrives as one
- * literal block). Deliberately NOT routed through `term.paste`/onData like
- * pasteIntoTerminal: that path fans out to an armed broadcast group, and a
- * room delivery must reach exactly its recipient.
- *
- * Writes ONLY the body — no trailing Enter. Agent TUIs (Claude Code
- * included) deliberately ignore an Enter that arrives in the same stdin
- * flush as a bracketed paste — that's the guard that stops a pasted body's
- * own embedded newlines from self-submitting the paste early — so a `\r`
- * glued directly onto the paste's closing marker is swallowed by that guard
- * and the prompt is left sitting, unsubmitted, in the composer. The Enter
- * must arrive as its own later write instead: see `submitTerminalPrompt`,
- * which the War Room delivery scheduler calls after a delay.
- */
-export function deliverPromptToTerminal(id: string, text: string): void {
+/** Require an interactive CLI composer, not merely a quiet PTY. */
+export function getTeamComposerState(id: string, draftTail?: string): boolean {
   const entry = entries.get(id)
-  if (!entry) return
-  entry.resetInputSegment()
-  // Sanitise BEFORE framing so the bracketed-paste markers added below are the
-  // only ESCs on the wire: a body containing `\x1b[201~` would close the paste
-  // early and the remainder would run as raw keystrokes in the recipient TUI.
-  // This is the single choke point every War Room text crosses (execute body,
-  // nudge, intro — the latter two interpolate renderer-supplied names), which
-  // is why it lives here and not in the scheduler. pasteIntoTerminal is left
-  // alone on purpose: the user pasting escape codes into their own pane is not
-  // the threat. Proved by prompt-sanitize.test.ts + tsc — the delivery test
-  // mocks this function wholesale and the registry needs xterm/DOM.
-  // Parity with term.paste's own CRLF normalization: terminals expect CR for line breaks.
-  const normalized = sanitizePromptText(text).replace(/\r?\n/g, '\r')
-  const body = entry.term.modes.bracketedPasteMode ? `\x1b[200~${normalized}\x1b[201~` : normalized
-  void writeTerminal(id, body)
-}
+  if (!entry || !entry.term.modes.bracketedPasteMode || getTerminalStatus(id).kind !== 'running') return false
+  const buffer = entry.term.buffer.active
+  const cursor = buffer.baseY + buffer.cursorY
+  const lines: string[] = []
+  const linesAbove = entry.config.agentId === 'antigravity' ? 6 : 3
+  for (let row = Math.max(buffer.baseY, cursor - linesAbove); row < buffer.baseY + entry.term.rows; row++) {
+    lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
+  }
+  if (draftTail === undefined) return isAgentComposer(entry.config.agentId, lines)
 
-/**
- * Submit a War Room prompt previously written by `deliverPromptToTerminal`:
- * writes just Enter, as its own stdin flush arriving later so the TUI treats
- * it as a real keypress rather than part of the paste (see that function's
- * doc comment for why a glued CR gets eaten). No-op for an unknown or
- * since-disposed terminal, same guard as every other entry point here. No
- * `resetInputSegment` call — nothing has been typed into this pane's
- * textarea between the body write and this call for that baseline to need
- * invalidating.
- */
-export function submitTerminalPrompt(id: string): void {
-  const entry = entries.get(id)
-  if (!entry) return
-  void writeTerminal(id, '\r')
+  // A large pasted draft can hide the CLI's compact help footer. The end of
+  // the actual paste at the cursor is stronger evidence than that footer.
+  const beforeCursor: string[] = []
+  for (let row = Math.max(buffer.baseY, cursor - 8); row <= cursor; row++) {
+    const line = buffer.getLine(row)
+    beforeCursor.push(
+      (row === cursor ? line?.translateToString(false, 0, buffer.cursorX) : line?.translateToString(true)) ?? ''
+    )
+  }
+  return isAgentComposer(entry.config.agentId, lines, { beforeCursor, expectedTail: draftTail })
 }
 
 /** Re-spawn the pty after exit/error, clearing the screen first. */
@@ -1204,7 +1155,7 @@ export function retryTerminal(id: string): void {
   entry.term.reset()
   // The pty this segment's committed baseline described is gone.
   entry.resetInputSegment()
-  // Same reasoning applies to the War Room typing signal: a half-typed line
+  // Same reasoning applies to the Agent Team typing signal: a half-typed line
   // held over from the dead pty would hold this pane's future deliveries
   // (dirty survives until the user types and submits, or clicks Deliver now)
   // for a line that no longer exists anywhere.
@@ -1240,7 +1191,7 @@ export function respawnTerminal(id: string, config: AttachConfig): void {
   entry.term.reset()
   // The pty this segment's committed baseline described is gone.
   entry.resetInputSegment()
-  // Same reasoning applies to the War Room typing signal: a half-typed line
+  // Same reasoning applies to the Agent Team typing signal: a half-typed line
   // held over from the dead pty would hold this pane's future deliveries
   // (dirty survives until the user types and submits, or clicks Deliver now)
   // for a line that no longer exists anywhere.
@@ -1254,8 +1205,7 @@ export function respawnTerminal(id: string, config: AttachConfig): void {
   // purpose so a remount never clobbers an OSC 7 value — but a respawn is a
   // NEW pty whose OSC 7 history starts empty, and a shell without the
   // integration snippet (fish, pwsh, cmd.exe, Linux zsh) never reports one,
-  // so without this the dead pty's last directory keeps resolving path links,
-  // the Git-panel scope and War Room join (`getTerminalCwd` readers). The
+  // so without this the dead pty's last directory keeps resolving path links. The
   // INCOMING cwd, not the merged `entry.config.cwd`: a respawn that omits it
   // reads as "unknown" (⇒ `undefined` ⇒ leaf/workspace cwd, like a fresh
   // pane), not "same as before". Don't unify with attach's `||`.
@@ -1265,37 +1215,6 @@ export function respawnTerminal(id: string, config: AttachConfig): void {
   entry.detector?.reset()
   safeFit(entry)
   entry.session.respawn({ ...entry.config, cols: entry.term.cols, rows: entry.term.rows })
-}
-
-/**
- * Resolve once a terminal has finished relocating (respawn: old pty killed, new
- * pty up). The session emits `connecting` then, only after the old pty exits,
- * `running` — so a settled state after a `connecting` means the OLD pty (and its
- * Job-Object child tree) is dead and any cwd it held is released. Used before
- * deleting a worktree so the delete never races a live pty (which on Windows
- * guts the directory then fails rmdir, leaving a husk). A timeout backstop keeps
- * a stuck pane from hanging the caller.
- */
-export function awaitTerminalRelocated(id: string, timeoutMs = 4000): Promise<void> {
-  const entry = entries.get(id)
-  if (!entry) return Promise.resolve()
-  return new Promise((resolve) => {
-    let sawConnecting = entry.session.getStatus().kind === 'connecting'
-    let done = false
-    const finish = (): void => {
-      if (done) return
-      done = true
-      unsub()
-      clearTimeout(timer)
-      resolve()
-    }
-    const unsub = entry.session.subscribe(() => {
-      const k = entry.session.getStatus().kind
-      if (k === 'connecting') sawConnecting = true
-      else if (sawConnecting) finish()
-    })
-    const timer = setTimeout(finish, timeoutMs)
-  })
 }
 
 export function getTerminalStatus(id: string): TerminalStatus {
@@ -1316,7 +1235,7 @@ export function getTerminalAgentId(id: string): string | undefined {
  * Route one `agent:hook` event (App.tsx subscription) into the pane's detector.
  * Gated on the Claude Code manifest, NOT on "has a detector": a `claude`
  * launched by hand inside a Codex/Gemini/other agent pane inherits that pane's
- * `SWARMTERM_SESSION` and would otherwise drive the wrong detector with edges
+ * `SWARM_AGENT_SESSION` and would otherwise drive the wrong detector with edges
  * the Codex screen never shows. Only the Claude Code manifest was tuned
  * against these hooks (its visibleIdle/visibleBlocker flags are what
  * `resolveHookState` arbitrates on), so every other pane keeps following its

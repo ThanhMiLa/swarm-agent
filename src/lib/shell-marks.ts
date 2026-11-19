@@ -8,7 +8,7 @@
  * exited. xterm.js has no built-in semantics for OSC 133 — it only hands the
  * payload to a registered handler — so all the meaning lives here, pure, so the
  * gate can prove it. The marks are OPT-IN: the user pastes a snippet into their
- * rc file (see the user guide); Swarmterm never injects anything into the shell.
+ * rc file (see the user guide); SwarmAgent never injects anything into the shell.
  *
  * The four marks and how real shells emit them shape the machine rules:
  * - `A` (prompt start) → `prompt`, from anything. From `prompt` it is NOT a
@@ -24,7 +24,7 @@
  *
  * `last` is carried BY REFERENCE through A/B/C and replaced only by the next D.
  * bash/zsh emit D and A in the same precmd, so a consumer sampling a moment later
- * (git-refresh's debounce, the notification watch in S14.2) sees `prompt`, never
+ * (the notification watcher) sees `prompt`, never
  * `finished` — the identity of `last` is therefore the one-shot "a command
  * finished" signal, and it must survive the A/B/C that follow.
  *

@@ -27,8 +27,8 @@ export interface CreateTerminalOptions {
   cwd?: string
   shellId?: ShellId
   initialCommand?: string
-  worktreeMode?: boolean
-  repoRoot?: string
+  agentId?: string
+  workspaceId?: string
   cols: number
   rows: number
 }

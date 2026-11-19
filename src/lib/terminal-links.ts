@@ -1,7 +1,7 @@
 /**
  * Click handling for terminal links, kept free of xterm and Tauri imports so the
  * decision is pure and unit-testable. The registry wires the side effects (open
- * the preview column, launch the editor) around it.
+ * the browser, launch the editor) around it.
  */
 
 /** The subset of a MouseEvent the decision needs. */
@@ -16,13 +16,11 @@ export type LinkKind = 'url' | 'path'
  * Whether a click on a terminal link should open it. The gate is chosen by the
  * cost of a misclick, not by uniformity:
  *
- * - `url` follows a PLAIN click. It hands the address to the OS default browser,
- *   which is where a link the user clicked belongs — the in-app preview column
- *   is reserved for `browser.open_preview`, i.e. pages an AGENT chose to show.
+ * - `url` follows a PLAIN click. It hands the address to the OS default browser.
  *   A misclick costs one stray browser tab, which is cheap enough that the
  *   one-click gesture is worth keeping.
  * - `path` requires Cmd (macOS) / Ctrl (win/linux), because it launches an
- *   EXTERNAL editor, which yanks OS focus out of Swarmterm entirely. That is the
+ *   EXTERNAL editor, which yanks OS focus out of SwarmAgent entirely. That is the
  *   exact failure terminal-focus.ts exists to prevent, and agent output has far
  *   higher path density than an ordinary shell.
  *

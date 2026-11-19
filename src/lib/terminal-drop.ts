@@ -3,7 +3,7 @@
  * pane's prompt. Kept free of DOM and Tauri imports so the quoting rules are
  * unit-testable on their own.
  */
-import { quoteForShell, type ShellFlavor } from '@/lib/agent-spawn-command'
+import { quoteForShell, type ShellFlavor } from '@/lib/shell-quoting'
 
 // Characters that survive a shell word unquoted. Quoting everything would work
 // too, but a bare `/Users/me/a.ts` reads far better at the prompt — this is the

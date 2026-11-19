@@ -23,6 +23,8 @@ export interface MonoFont {
   platform: string
   /** Full CSS stack ending in monospace. */
   stack: string
+  /** Named families to probe when the stack also contains a named fallback. */
+  probeStack?: string
   /** True if this font ships programming ligatures. */
   ligatures: boolean
 }
@@ -30,6 +32,8 @@ export interface MonoFont {
 /** The historical hardcoded stack — the System Default option and pref default. */
 export const SYSTEM_FONT_STACK =
   '"Cascadia Mono", "Consolas", "JetBrains Mono", monospace'
+
+const SF_MONO_FAMILIES = '"SF Mono", "SFMono-Regular"'
 
 /** Curated cross-platform monospace fonts. Order = display order. */
 export const MONO_FONTS: readonly MonoFont[] = [
@@ -39,12 +43,45 @@ export const MONO_FONTS: readonly MonoFont[] = [
   { id: 'consolas', label: 'Consolas', platform: 'Windows', stack: '"Consolas", monospace', ligatures: false },
   { id: 'jetbrains-mono', label: 'JetBrains Mono', platform: 'Cross-platform', stack: '"JetBrains Mono", monospace', ligatures: true },
   { id: 'fira-code', label: 'Fira Code', platform: 'Cross-platform', stack: '"Fira Code", monospace', ligatures: true },
-  { id: 'sf-mono', label: 'SF Mono', platform: 'macOS', stack: '"SF Mono", "SFMono-Regular", Menlo, monospace', ligatures: false },
+  { id: 'jetbrains-nerd', label: 'JetBrainsMono Nerd Font Mono', platform: 'Cross-platform', stack: '"JetBrainsMono Nerd Font Mono", monospace', ligatures: true },
+  { id: 'fira-nerd', label: 'FiraCode Nerd Font Mono', platform: 'Cross-platform', stack: '"FiraCode Nerd Font Mono", monospace', ligatures: true },
+  { id: 'sf-mono', label: 'SF Mono', platform: 'macOS', stack: `${SF_MONO_FAMILIES}, Menlo, monospace`, probeStack: SF_MONO_FAMILIES, ligatures: false },
   { id: 'menlo', label: 'Menlo', platform: 'macOS', stack: 'Menlo, monospace', ligatures: false },
   { id: 'monaco', label: 'Monaco', platform: 'macOS', stack: 'Monaco, monospace', ligatures: false },
   { id: 'dejavu-mono', label: 'DejaVu Sans Mono', platform: 'Linux', stack: '"DejaVu Sans Mono", monospace', ligatures: false },
   { id: 'ubuntu-mono', label: 'Ubuntu Mono', platform: 'Linux', stack: '"Ubuntu Mono", monospace', ligatures: false }
 ] as const
+
+/** Check whether the WebView can render a named face from each stack. */
+export function probeTerminalFonts(stacks: string[]): Map<string, boolean> {
+  const result = new Map<string, boolean>()
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) return result
+
+  // WebKit on macOS can only resolve user-installed fonts on a connected canvas.
+  canvas.hidden = true
+  document.body.append(canvas)
+  try {
+    const measure = (font: string): number => {
+      context.font = `32px ${font}`
+      return context.measureText('WMWMiIl10O@#áấỐ').width
+    }
+    const baselines = ['monospace', 'serif', 'sans-serif'].map((generic) => ({
+      generic,
+      width: measure(generic)
+    }))
+    for (const stack of stacks) {
+      const named = stack.replace(/,\s*monospace\s*$/i, '')
+      // Multiple fallbacks distinguish an absent face from one that happens
+      // to have the same metrics as a single generic family.
+      result.set(stack, baselines.some(({ generic, width }) => measure(`${named}, ${generic}`) !== width))
+    }
+    return result
+  } finally {
+    canvas.remove()
+  }
+}
 
 export const FONT_SIZE_MIN = 8
 export const FONT_SIZE_MAX = 32

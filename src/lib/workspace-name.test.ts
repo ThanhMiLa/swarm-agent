@@ -7,7 +7,7 @@ describe('workspaceNameFor', () => {
   })
 
   it('handles unix paths and trailing separators', () => {
-    expect(workspaceNameFor('/Users/me/projects/swarmterm/', [], 1)).toBe('swarmterm')
+    expect(workspaceNameFor('/Users/me/projects/swarm-agent/', [], 1)).toBe('swarm-agent')
   })
 
   it('suffixes (1) when the folder name is already taken', () => {

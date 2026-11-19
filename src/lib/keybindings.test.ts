@@ -45,18 +45,16 @@ describe('getShortcutGroups platform tokens', () => {
   const tokens = (isMac: boolean): string[] =>
     getShortcutGroups(isMac).flatMap((g) => g.entries.flatMap((e) => e.keys))
 
-  it('uses Ctrl/Alt on non-mac, never ⌘/⌥', () => {
+  it('uses Ctrl on non-mac', () => {
     const t = tokens(false)
     expect(t).toContain('Ctrl')
-    expect(t).toContain('Alt')
     expect(t).not.toContain('⌘')
     expect(t).not.toContain('⌥')
   })
 
-  it('uses ⌘/⌥ on mac, never Ctrl/Alt', () => {
+  it('uses ⌘ on mac', () => {
     const t = tokens(true)
     expect(t).toContain('⌘')
-    expect(t).toContain('⌥')
     expect(t).not.toContain('Ctrl')
     expect(t).not.toContain('Alt')
   })
@@ -83,16 +81,16 @@ describe('matchAppShortcut', () => {
     expect(matchAppShortcut(key({ ctrlKey: true }), false)).toBe('toggle-navbar')
   })
 
-  it('Ctrl+Shift+B toggles broadcast on non-mac', () => {
-    expect(matchAppShortcut(key({ ctrlKey: true, shiftKey: true }), false)).toBe('toggle-broadcast')
+  it('leaves Ctrl+Shift+B unbound on non-mac', () => {
+    expect(matchAppShortcut(key({ ctrlKey: true, shiftKey: true, key: 'B' }), false)).toBeNull()
   })
 
   it('Cmd+B toggles navbar on mac', () => {
     expect(matchAppShortcut(key({ metaKey: true }), true)).toBe('toggle-navbar')
   })
 
-  it('Cmd+Shift+B toggles broadcast on mac', () => {
-    expect(matchAppShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe('toggle-broadcast')
+  it('leaves Cmd+Shift+B unbound on mac', () => {
+    expect(matchAppShortcut(key({ metaKey: true, shiftKey: true, key: 'B' }), true)).toBeNull()
   })
 
   it('Ctrl+B does NOT match on mac (left free for tmux prefix)', () => {
@@ -115,10 +113,6 @@ describe('matchAppShortcut', () => {
 
   it('rejects other keys', () => {
     expect(matchAppShortcut(key({ ctrlKey: true, key: 'a' }), false)).toBeNull()
-  })
-
-  it('matches uppercase B (shift held)', () => {
-    expect(matchAppShortcut(key({ ctrlKey: true, shiftKey: true, key: 'B' }), false)).toBe('toggle-broadcast')
   })
 
   it('plain B without modifier does not match', () => {

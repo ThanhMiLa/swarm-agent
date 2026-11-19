@@ -2,7 +2,7 @@
  * Context-window usage (`agent:context`) → the pane-header chip.
  *
  * Why this exists: the chip mirrors the number Claude Code's OWN status line
- * prints inside the pane (`swarmterm --statusline` reads `used_percentage` from
+ * prints inside the pane (`swarm-agent --statusline` reads `used_percentage` from
  * the stdin payload and carries it on the 300 ms `/status` probe, see
  * `src-tauri/src/statusline/probe.rs` + `mcp/context_usage.rs`). Two renderers
  * of one number must agree on every turn: if the in-pane line turns amber at

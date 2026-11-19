@@ -9,7 +9,7 @@
 // fatal because a half-yank (a program that cut its buffer mid-codepoint)
 // must be dropped, not landed as U+FFFD mojibake the user then pastes.
 //
-// The 1 MiB cap is Swarmterm's clipboard policy, enforced on the base64
+// The 1 MiB cap is SwarmAgent's clipboard policy, enforced on the base64
 // length BEFORE any decode so an oversized payload costs nothing. (xterm's
 // own 10 MB OSC `PAYLOAD_LIMIT` is upstream of us and truncates the string
 // before we see it.) A base64 length cap admits up to 2 bytes over 1 MiB on
@@ -38,7 +38,7 @@ const utf8 = new TextDecoder('utf-8', { fatal: true })
 
 export function parseOsc52(data: string): Osc52Result {
   // base64 never contains ';', so the FIRST ';' is the Pc/Pd boundary. Pc
-  // (c/p/s/0-7 selection names) is discarded on purpose — Swarmterm has one
+  // (c/p/s/0-7 selection names) is discarded on purpose — SwarmAgent has one
   // clipboard, and tmux emits an empty Pc ("52;;…").
   const sep = data.indexOf(';')
   if (sep < 0) return { kind: 'ignore', reason: 'malformed' }
