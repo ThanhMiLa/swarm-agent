@@ -4,6 +4,18 @@ Start here. Platform specifics live in [release-macos.md](release-macos.md)
 and [release-windows.md](release-windows.md); this page is the flow that ties
 the two machines together and the rules that keep auto-update working.
 
+## Manual macOS releases
+
+SwarmAgent 0.0.2 ships as an Apple Silicon DMG for manual installation, like
+0.0.1. Build the app on Apple Silicon with `npm run tauri build -- --bundles app`,
+sign the bundle ad hoc, and verify its signature and version before packaging
+it into a DMG. Publish the DMG with the version tag and the matching changelog
+entry. Mention the architecture and ad-hoc signature in the release notes.
+
+Use the full release flow below when distributing signed auto-updates. Once
+the repository serves an updater manifest, keep it available on the latest
+release.
+
 ## The five steps
 
 ```
@@ -104,7 +116,7 @@ uses them.
 
 ## Rules that keep updates working
 
-- **Never publish a release without updater artifacts.** `releases/latest`
+- **Keep updater artifacts on the latest release once auto-updates ship.** `releases/latest`
   would start serving a 404 manifest and every installed app's update check
   fails (silently on startup, visibly via the tray) until the next good
   release. The publish script's refusal logic enforces this — don't hand-roll

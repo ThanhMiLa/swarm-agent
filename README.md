@@ -6,7 +6,7 @@
 
 **One workspace for your coding agents.**
 
-[![Version](https://img.shields.io/badge/version-0.0.1-2563eb)](https://github.com/ThanhMiLa/swarm-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.0.2-2563eb)](https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 </div>
@@ -16,9 +16,13 @@ across different CLIs. Each workspace has one Agent Team. Drag open agent
 panes into it, name them, and ask one to delegate. SwarmAgent sends each
 worker’s result back to the original leader as that task finishes.
 
-Agent Team supports **Codex**, **Antigravity**, and **OpenCode**. Each pane
+Agent Team supports **Codex**, **Antigravity**, **OpenCode**, and **Claude Code**. Each pane
 has its own identity, so two panes running the same CLI can receive separate
 assignments.
+
+## Download
+
+Get the [macOS Apple Silicon DMG](https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2) from GitHub Releases. This build is ad-hoc signed and installed manually.
 
 ## Run from source
 
@@ -31,8 +35,9 @@ npm install
 npm run tauri dev
 ```
 
-Open a Git checkout, add agent panes to the workspace's team, and turn Team
-Mode on. You can delegate explicitly from any member, for example:
+Open a Git checkout and add agent panes to the workspace's team. The team
+activates automatically when the first member joins. To delegate, send an
+explicit request from any member.
 
 > [TEAM] Send "hello" to "antigravity-1" and ask it to report back.
 

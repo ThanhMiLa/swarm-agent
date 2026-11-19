@@ -5,6 +5,27 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-11-20
+
+### Added
+
+- Claude Code can lead or receive Agent Team assignments alongside Codex, Antigravity, and OpenCode.
+
+### Changed
+
+- Agent Team activates when the first pane joins and deactivates when the last member leaves. Delegation still starts with an explicit request.
+- The member list shows Working in red, Needs input in purple, and MCP pending in warning yellow. Ready stays green and Unsupported stays gray.
+
+### Fixed
+
+- Codex launched from Finder can discover its supported `--no-daemon` flag through the Node.js executable on the agent search path. This lets the pane authenticate with the local MCP server.
+- The MCP bridge treats missing, blank, and unexpanded environment values as inactive.
+- Agent Team recognizes Claude Code's collapsed paste marker and holds automated input while a CLI is waiting for confirmation.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.0.2_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.0.1] - 2026-11-20
 
 Initial release of **SwarmAgent** — one workspace for your coding agents.
@@ -28,4 +49,5 @@ Initial release of **SwarmAgent** — one workspace for your coding agents.
 
 - **macOS (Apple Silicon / `aarch64`)**: `SwarmAgent_0.0.1_aarch64.dmg` (unsigned / ad-hoc signed local build)
 
+[0.0.2]: https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.1
