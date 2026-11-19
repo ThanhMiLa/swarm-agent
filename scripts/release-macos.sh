@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build, sign, notarize and staple a macOS release of Swarmterm.
+# Build, sign, notarize and staple a macOS release of SwarmAgent.
 #
 #   ./scripts/release-macos.sh           universal .dmg, notarized + stapled
 #   ./scripts/release-macos.sh --smoke   arm64 .app, signed only — proves the
@@ -60,9 +60,10 @@ else
 fi
 
 echo "==> building ($TARGET, --bundles $BUNDLES)"
-npm run tauri build -- --target "$TARGET" --bundles "$BUNDLES"
+UPDATER_CONFIG="$(node scripts/release/updater-config.mjs)"
+npm run tauri build -- --target "$TARGET" --bundles "$BUNDLES" --config "$UPDATER_CONFIG"
 
-APP="src-tauri/target/$TARGET/release/bundle/macos/Swarmterm.app"
+APP="src-tauri/target/$TARGET/release/bundle/macos/SwarmAgent.app"
 [ -d "$APP" ] || die "app bundle not found: $APP"
 
 echo "==> verifying signature"

@@ -1,4 +1,4 @@
-# Build a Windows release of Swarmterm: NSIS installer + minisign updater
+# Build a Windows release of SwarmAgent: NSIS installer + minisign updater
 # signature. No Authenticode — SmartScreen's "Unknown publisher" flow is
 # accepted and documented in docs/release-windows.md. The updater's trust
 # comes from the minisign signature, not from Windows code signing.
@@ -40,10 +40,18 @@ $version = (Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).ver
 Write-Host "==> building NSIS installer (v$version)"
 # npx, not `npm run tauri -- …`: PowerShell swallows a bare `--`, npm then
 # eats `--bundles` as its own flag, and cargo receives a stray `nsis`.
-npx tauri build --bundles nsis
-if ($LASTEXITCODE -ne 0) { Die "tauri build failed" }
-
-$setup = "src-tauri/target/release/bundle/nsis/Swarmterm_${version}_x64-setup.exe"
+$updaterConfig = node scripts/release/updater-config.mjs
+if ($LASTEXITCODE -ne 0) { Die "updater configuration failed" }
+# A config file avoids differences in native argument quoting across PowerShell versions.
+$configFile = Join-Path ([IO.Path]::GetTempPath()) "$([guid]::NewGuid()).json"
+try {
+  [IO.File]::WriteAllText($configFile, $updaterConfig)
+  npx tauri build --bundles nsis --config $configFile
+  if ($LASTEXITCODE -ne 0) { Die "tauri build failed" }
+} finally {
+  Remove-Item $configFile -ErrorAction SilentlyContinue
+}
+$setup = "src-tauri/target/release/bundle/nsis/SwarmAgent_${version}_x64-setup.exe"
 if (-not (Test-Path $setup)) { Die "installer not found: $setup" }
 if (-not (Test-Path "$setup.sig")) {
   Die "updater signature not found: $setup.sig - was the build run without the signing key?"

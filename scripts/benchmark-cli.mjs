@@ -48,8 +48,8 @@ try {
   console.log(`Running native Tauri benchmark on ${os.type()} ${os.release()} ${os.arch()}; report: ${reportPath}`)
   cargo = spawn('cargo', ['run', '--manifest-path', 'src-tauri/Cargo.toml', '--', '--terminal-benchmark'], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, SWARMTERM_BENCHMARK: '1', SWARMTERM_BENCHMARK_REPORT: reportPath,
-      ...(args.includes('--quick') ? { SWARMTERM_BENCHMARK_QUICK: '1' } : {}) }
+    env: { ...process.env, SWARM_AGENT_BENCHMARK: '1', SWARM_AGENT_BENCHMARK_REPORT: reportPath,
+      ...(args.includes('--quick') ? { SWARM_AGENT_BENCHMARK_QUICK: '1' } : {}) }
   })
   cargo.stdout.on('data', capture); cargo.stderr.on('data', data => { capture(data); process.stderr.write(data) })
   const watchdog = setTimeout(() => stop(cargo), 240000)

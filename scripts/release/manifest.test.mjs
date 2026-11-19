@@ -5,16 +5,16 @@ const base = {
   version: '0.2.0',
   notes: 'notes',
   pubDate: '2026-08-12T00:00:00Z',
-  repo: 'duongducnguyen/swarmterm'
+  repo: 'ThanhMiLa/swarm-agent'
 }
-const MAC = 'Swarmterm.app.tar.gz'
-const WIN = 'Swarmterm_0.2.0_x64-setup.exe'
+const MAC = 'SwarmAgent.app.tar.gz'
+const WIN = 'SwarmAgent_0.2.0_x64-setup.exe'
 
 describe('buildManifest', () => {
   it('maps a complete asset set onto all three platform keys', () => {
     const { manifest, platforms, missing } = buildManifest({
       ...base,
-      assetNames: [MAC, `${MAC}.sig`, WIN, `${WIN}.sig`, 'Swarmterm_0.2.0_universal.dmg'],
+      assetNames: [MAC, `${MAC}.sig`, WIN, `${WIN}.sig`, 'SwarmAgent_0.2.0_universal.dmg'],
       signatures: { [`${MAC}.sig`]: 'mac-sig', [`${WIN}.sig`]: 'win-sig' }
     })
     expect(missing).toEqual([])
@@ -25,7 +25,7 @@ describe('buildManifest', () => {
     expect(manifest.platforms['darwin-aarch64']).toEqual(manifest.platforms['darwin-x86_64'])
     expect(manifest.platforms['darwin-aarch64']).toEqual({
       signature: 'mac-sig',
-      url: `https://github.com/duongducnguyen/swarmterm/releases/download/v0.2.0/${MAC}`
+      url: `https://github.com/ThanhMiLa/swarm-agent/releases/download/v0.2.0/${MAC}`
     })
     expect(manifest.platforms['windows-x86_64'].signature).toBe('win-sig')
   })
@@ -52,7 +52,7 @@ describe('buildManifest', () => {
   })
 
   it('prefers the setup.exe matching the version when several exist', () => {
-    const stale = 'Swarmterm_0.1.0_x64-setup.exe'
+    const stale = 'SwarmAgent_0.1.0_x64-setup.exe'
     const { manifest } = buildManifest({
       ...base,
       assetNames: [stale, `${stale}.sig`, WIN, `${WIN}.sig`],

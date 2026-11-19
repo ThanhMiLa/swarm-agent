@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { REQUIRED_PLATFORMS, buildManifest } from './manifest.mjs'
 
-const REPO = 'duongducnguyen/swarmterm'
+const REPO = 'ThanhMiLa/swarm-agent'
 const die = (msg) => {
   console.error(`release-publish: ${msg}`)
   process.exit(1)
@@ -73,10 +73,10 @@ const candidates =
   process.platform === 'darwin'
     ? [
         ...globDmg(`${mac}/dmg`),
-        `${mac}/macos/Swarmterm.app.tar.gz`,
-        `${mac}/macos/Swarmterm.app.tar.gz.sig`
+        `${mac}/macos/SwarmAgent.app.tar.gz`,
+        `${mac}/macos/SwarmAgent.app.tar.gz.sig`
       ]
-    : [`${win}/Swarmterm_${version}_x64-setup.exe`, `${win}/Swarmterm_${version}_x64-setup.exe.sig`]
+    : [`${win}/SwarmAgent_${version}_x64-setup.exe`, `${win}/SwarmAgent_${version}_x64-setup.exe.sig`]
 const local = candidates.filter((p) => existsSync(p))
 if (local.length === 0) {
   console.warn('release-publish: no local artifacts found — refreshing latest.json only')
@@ -91,7 +91,7 @@ if (local.length === 0) {
 const assetNames = JSON.parse(gh('release', 'view', tag, '--json', 'assets')).assets.map(
   (a) => a.name
 )
-const sigDir = mkdtempSync(join(tmpdir(), 'swarmterm-sigs-'))
+const sigDir = mkdtempSync(join(tmpdir(), 'swarm-agent-sigs-'))
 const signatures = {}
 if (assetNames.some((n) => n.endsWith('.sig'))) {
   gh('release', 'download', tag, '--pattern', '*.sig', '--dir', sigDir)
@@ -111,7 +111,7 @@ rmSync(sigDir, { recursive: true, force: true })
 for (const m of missing) console.log(`    still missing — ${m}`)
 if (!manifest) die('no platform is complete yet; nothing to write into latest.json')
 
-const manifestPath = join(mkdtempSync(join(tmpdir(), 'swarmterm-manifest-')), 'latest.json')
+const manifestPath = join(mkdtempSync(join(tmpdir(), 'swarm-agent-manifest-')), 'latest.json')
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
 gh('release', 'upload', tag, manifestPath, '--clobber')
 console.log(`==> latest.json refreshed (${platforms.join(', ')})`)
