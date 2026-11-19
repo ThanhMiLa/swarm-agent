@@ -1,21 +1,21 @@
 //! The MCP server surface. One struct = the whole tool set; tool groups are
-//! added as additional `impl SwarmtermMcpServer` blocks in dedicated files
-//! (e.g. `mcp/tools/browser.rs`). Each such block gets its own
+//! added as additional `impl SwarmAgentMcpServer` blocks in dedicated files
+//! (e.g. `mcp/tools/agent_team.rs`). Each such block gets its own
 //! `#[tool_router(router = tool_router_<group>)]` (rmcp's macro emits a
 //! generated fn per `impl` block, so every group needs a distinct name to
-//! avoid colliding on the default `tool_router`); `SwarmtermMcpServer::new`
+//! avoid colliding on the default `tool_router`); `SwarmAgentMcpServer::new`
 //! below merges every group's router with `ToolRouter`'s `+` into the single
 //! `tool_router` field `#[tool_handler]` reads from.
 //!
 //! Adding a tool later:
 //! 1. Add `pub mod <group>;` in `mcp/tools/mod.rs`.
-//! 2. Write an `impl SwarmtermMcpServer` block in `mcp/tools/<group>.rs`
+//! 2. Write an `impl SwarmAgentMcpServer` block in `mcp/tools/<group>.rs`
 //!    annotated `#[tool_router(router = tool_router_<group>, vis = "pub")]`
-//!    (see `mcp/tools/browser.rs`) with `#[tool]` methods, importing
+//!    (see `mcp/tools/agent_team.rs`) with `#[tool]` methods, importing
 //!    `use rmcp::{tool, tool_router};` (the macros must be in scope
 //!    unqualified — invoking them via a fully-qualified `rmcp::tool_router`
 //!    path does not expand correctly with this rmcp version).
-//! 3. Register that block's router in `SwarmtermMcpServer::new` below via
+//! 3. Register that block's router in `SwarmAgentMcpServer::new` below via
 //!    `Self::tool_router_<group>()`, merged into the `tool_router` field with
 //!    `+` if more than one group exists.
 //!
@@ -62,76 +62,29 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Json;
 
-use crate::mcp::auth::{self, AuthError, TerminalId};
+use crate::mcp::auth;
 use crate::mcp::context_usage::{self, AgentContextEvent};
 use crate::pty::AppState;
 
 #[derive(Clone)]
-pub struct SwarmtermMcpServer {
+pub struct SwarmAgentMcpServer {
     pub app: AppHandle,
     tool_router: ToolRouter<Self>,
 }
 
-impl SwarmtermMcpServer {
+impl SwarmAgentMcpServer {
     fn new(app: AppHandle) -> Self {
         // Merge every tool group's router. `+` combines `ToolRouter`s so
         // `#[tool_handler]` sees the union of both groups' `#[tool]` methods.
         Self {
             app,
-            tool_router: Self::tool_router_browser()
-                + Self::tool_router_worktree()
-                + Self::tool_router_warroom()
-                + Self::tool_router_peers(),
+            tool_router: Self::tool_router_agent_team(),
         }
-    }
-
-    /// Resolve the caller's terminal from the bearer header. Returns an rmcp
-    /// protocol error (surfaced to the caller roughly as a 401) on failure.
-    pub(crate) fn caller(
-        &self,
-        parts: &axum::http::request::Parts,
-    ) -> Result<TerminalId, rmcp::ErrorData> {
-        let header = parts
-            .headers
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("");
-        let token = auth::bearer(header);
-        let state = self.app.state::<AppState>();
-        let terminals = state.terminals.lock().unwrap();
-        auth::resolve(token, |id| terminals.contains_key(id)).map_err(|e| match e {
-            AuthError::Missing => rmcp::ErrorData::invalid_request("missing bearer token", None),
-            AuthError::Unknown => rmcp::ErrorData::invalid_request("unknown session", None),
-        })
-    }
-
-    /// Gate + context for worktree tools: the calling terminal must belong to
-    /// a workspace created with worktree isolation on. Returns the workspace's
-    /// repo folder recorded at spawn time.
-    pub(crate) fn worktree_ctx(&self, terminal: &TerminalId) -> Result<String, rmcp::ErrorData> {
-        let state = self.app.state::<AppState>();
-        let terminals = state.terminals.lock().unwrap();
-        let t = terminals
-            .get(&terminal.0)
-            .ok_or_else(|| rmcp::ErrorData::invalid_request("unknown session", None))?;
-        if !t.worktree_mode {
-            return Err(rmcp::ErrorData::invalid_request(
-                "worktree isolation is not enabled for this workspace — enable \
-                 \"Isolate features in git worktrees\" when creating the workspace",
-                None,
-            ));
-        }
-        t.repo_root.clone().ok_or_else(|| {
-            rmcp::ErrorData::invalid_request(
-                "no repository folder recorded for this terminal",
-                None,
-            )
-        })
     }
 }
 
 #[tool_handler(router = self.tool_router)]
-impl ServerHandler for SwarmtermMcpServer {
+impl ServerHandler for SwarmAgentMcpServer {
     fn get_info(&self) -> ServerInfo {
         // `ServerInfo` (aka `InitializeResult`) is `#[non_exhaustive]`, so a
         // field literal is rejected even naming every field — use its builder
@@ -139,120 +92,79 @@ impl ServerHandler for SwarmtermMcpServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_server_info(
-                Implementation::new("swarmterm", env!("CARGO_PKG_VERSION")).with_title("Swarmterm"),
+                Implementation::new("swarm-agent", env!("CARGO_PKG_VERSION")).with_title("SwarmAgent"),
             )
-            // The delegation guidance below is what makes agents reach for
-            // worktree.spawn unprompted — MCP clients (Claude Code et al.)
-            // surface server instructions to the model at session start, so
-            // this is the one place the hint lands in every repo without
-            // per-project CLAUDE.md edits. Instructions are server-wide and
-            // static; the tools themselves stay gated per-workspace, hence
-            // the "when the workspace enables them" hedge.
             .with_instructions(
-                "Swarmterm in-app tools: control the desktop terminal app from an agent \
-                 running inside one of its panes. Because this server is connected, the \
-                 user is working inside Swarmterm, which has a built-in web-preview column \
-                 beside each terminal. Whenever you start a local dev server or otherwise \
-                 produce a viewable http(s) URL, call browser.open_preview with that URL so \
-                 the page opens right next to your pane — prefer this over only printing the \
-                 URL for the user to copy. When the workspace enables the worktree \
-                 tools: given several independent tasks, or one task worth isolating from \
-                 the current checkout, prefer delegating each to a parallel agent via \
-                 worktree.spawn (one branch per task) instead of editing in place — the \
-                 spawned agent starts inside its own git worktree, so parallel work never \
-                 collides. If your pane already runs inside a swarm/* worktree, \
-                 you may rename that branch to match your actual task (git branch -m \
-                 <new-name>) — but never move or rename the worktree DIRECTORY (session \
-                 state is keyed by its path). Use worktree.remove to clean up after a branch \
-                 is merged. When the user has dragged panes into the War Room (right panel), the \
-                 war_room.* tools connect the agents in those panes: list_peers shows who is \
-                 present, send carries a message (mode \"probe\") or hands a peer a prompt to \
-                 run (mode \"execute\"), read_inbox fetches what peers sent you — read it and \
-                 reply promptly when nudged. After handing a peer a prompt with mode \"execute\", \
-                 call war_room.wait_peer (afterChange true) to block until it needs input or \
-                 finishes instead of polling; war_room.read_peer shows the last lines of a \
-                 peer's screen.",
+                "SwarmAgent provides workspace Agent Team tools. \
+                 Agent Team is opt-in per user prompt: only use team tools for delegation if the \
+                 user explicitly asks to use the team, names a member to delegate to, or writes [TEAM]. \
+                 A plain coding request is solo even when Team Mode is enabled. An instruction to send a \
+                 prompt to another CLI or agent from this pane refers to a SwarmAgent team member. \
+                 Use only the SwarmAgent team tools for that request. Never open an external app, \
+                 use computer control, create a Codex chat/thread, or launch another CLI to substitute for a team pane. If \
+                 Team Mode is off, a member is disconnected, or a team tool is missing or fails, \
+                 report that obstacle to the user and stop that handoff. List members to find \
+                 exact IDs and ask the user if a target is ambiguous. Plan distinct file scopes and \
+                 call team_dispatch once, then end your turn without waiting. Assigned workers must \
+                 call team_report_result before ending; report file paths and observations, not code. \
+                 On each Agent Team result prompt, review that worker's task and report findings \
+                 to the user immediately, then end your turn. Do not wait for the other workers, \
+                 edit files, dispatch again, or delegate."
             )
     }
 
-    // `#[rmcp::tool_handler]` wires `call_tool`/`list_tools` to `self.tool_router`
-    // — the field name must be `tool_router` (rmcp's macro convention).
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+        let tools = self.tool_router.list_all();
+        // An initialize attempt does not mean the CLI received the tools.
+        // Only record successful discovery from a live pane's own credential.
+        if let Some(parts) = context.extensions.get::<axum::http::request::Parts>() {
+            let state = self.app.state::<AppState>();
+            let token = auth::bearer(bearer_header(&parts.headers));
+            if state.mcp_session(token).is_some()
+                && state
+                    .mcp_clients
+                    .lock()
+                    .unwrap()
+                    .mark_tools_discovered(token)
+            {
+                crate::agent_team::notify(&self.app);
+            }
+        }
+        Ok(rmcp::model::ListToolsResult::with_all_items(tools))
+    }
 }
 
-/// Build the axum router that hosts the MCP server on `POST /mcp`.
-///
-/// Stateless-session config: each HTTP call is independent (no `Mcp-Session-Id`
-/// continuity required across requests). Swarmterm's tools are one-shot
-/// (open a preview, etc.) and the bearer token — not an MCP session — is what
-/// scopes a call to a terminal, so `LocalSessionManager`'s in-memory session
-/// bookkeeping is used purely to satisfy the transport's type, not to persist
-/// caller state across calls.
+/// Streamable HTTP sessions track protocol state. Live PTY bearer credentials
+/// independently identify the caller for Agent Team membership and tools.
 pub fn axum_router(app: AppHandle) -> axum::Router {
     let session_manager = Arc::new(LocalSessionManager::default());
     let service = StreamableHttpService::new(
         {
             let app = app.clone();
-            move || Ok(SwarmtermMcpServer::new(app.clone()))
+            move || Ok(SwarmAgentMcpServer::new(app.clone()))
         },
         session_manager,
         StreamableHttpServerConfig::default(),
     );
     axum::Router::new()
         .route_service("/mcp", service)
-        // Record every inbound MCP request's bearer BEFORE rmcp consumes the
-        // body. This layer — not `SwarmtermMcpServer::caller` — is what makes
-        // `initialize` count, and `initialize` is the request that proves the
-        // client actually loaded our config. Peeking the JSON-RPC body would
-        // mean buffering it; the header is enough.
-        //
-        // `layer` applies to routes registered ABOVE it only, which is why
-        // `/status` is added afterwards: the status probe is Swarmterm asking
-        // itself a question, and must never be able to manufacture the
-        // `connected` verdict it is about to read. `/hook` sits below the
-        // layer for the same reason: a hook POST is Swarmterm's own
-        // `--hook` CLI talking to itself, not an MCP client, so it must
-        // never stamp `connected` either.
-        .layer(axum::middleware::from_fn_with_state(
-            app.clone(),
-            record_client,
-        ))
         .route("/status", get(status_handler))
         .route("/hook", post(hook_handler))
         .with_state(app)
 }
 
-/// Middleware: stamp the caller's token into `AppState.mcp_clients`.
-async fn record_client(
-    AxumState(app): AxumState<AppHandle>,
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Response {
-    if let Some(header) = req
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-    {
-        let token = auth::bearer(header).to_owned();
-        app.state::<AppState>()
-            .mcp_clients
-            .lock()
-            .unwrap()
-            .touch(&token);
-    }
-    next.run(req).await
-}
-
 /// The bearer gate shared by the loopback side routes (`/status`, `/hook`):
 /// resolve the header's token to a LIVE terminal id, or `None`. Auth goes
-/// through `auth::resolve`, so a killed pane's token stops answering the
-/// instant its PTY dies — the same revocation rule the MCP tools use.
+/// through the live PTY registry, so its token stops answering when the
+/// session dies — the same revocation rule the MCP tools use.
 fn live_caller(app: &AppHandle, headers: &HeaderMap) -> Option<String> {
     let token = auth::bearer(bearer_header(headers));
     let state = app.state::<AppState>();
-    let terminals = state.terminals.lock().unwrap();
-    auth::resolve(token, |id| terminals.contains_key(id))
-        .ok()
-        .map(|TerminalId(id)| id)
+    state.mcp_session(token).map(|session| session.terminal_id)
 }
 
 fn bearer_header(headers: &HeaderMap) -> &str {
@@ -280,7 +192,7 @@ fn publish_context(app: &AppHandle, terminal_id: &str, pct: Option<f64>) {
             &AgentContextEvent {
                 terminal_id: terminal_id.to_owned(),
                 pct,
-                at_ms: crate::warroom::now_ms(),
+                at_ms: crate::agent_team::now_ms(),
             },
         );
     }
@@ -305,7 +217,12 @@ async fn status_handler(
         context_usage::parse_ctx_query(query.as_deref()),
     );
     let token = auth::bearer(bearer_header(&headers));
-    let connected = app.state::<AppState>().mcp_clients.lock().unwrap().has_seen(token);
+    let connected = app
+        .state::<AppState>()
+        .mcp_clients
+        .lock()
+        .unwrap()
+        .has_discovered_tools(token);
     (
         StatusCode::OK,
         // The probe reads to EOF rather than implementing keep-alive framing.
@@ -315,7 +232,7 @@ async fn status_handler(
         .into_response()
 }
 
-/// `POST /hook` — the `swarmterm --hook` CLI reporting one Claude Code hook
+/// `POST /hook` — the `swarm-agent --hook` CLI reporting one Claude Code hook
 /// event for its own pane. The body is a closed enum (`HookBody`), never the
 /// hook's stdin: prompt text, tool input and cwd stay inside the pane. The
 /// verdict is re-emitted to the renderer as `agent:hook` (payload in lockstep
@@ -326,6 +243,26 @@ async fn hook_handler(
     headers: HeaderMap,
     Json(body): Json<crate::hook::HookBody>,
 ) -> Response {
+    if body.signal == crate::hook::Signal::AgentExited {
+        let state = app.state::<AppState>();
+        let token = auth::bearer(bearer_header(&headers));
+        let Some(session) = state.mcp_session(token) else {
+            return StatusCode::UNAUTHORIZED.into_response();
+        };
+        {
+            let mut terminals = state.terminals.lock().unwrap();
+            if let Some(terminal) = terminals
+                .get_mut(&session.terminal_id)
+                .filter(|t| t.flow.flow_id() == session.generation)
+            {
+                terminal.agent_id = None;
+            }
+        }
+        state.mcp_clients.lock().unwrap().forget(token);
+        state.agent_teams.lock().unwrap().leave(&session);
+        crate::agent_team::notify(&app);
+        return StatusCode::NO_CONTENT.into_response();
+    }
     let Some(terminal_id) = live_caller(&app, &headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
@@ -335,7 +272,7 @@ async fn hook_handler(
         &crate::hook::AgentHookEvent {
             terminal_id: terminal_id.clone(),
             signal: body.signal,
-            at_ms: crate::warroom::now_ms(),
+            at_ms: crate::agent_team::now_ms(),
         },
     );
     // SessionEnd must drop the context chip NOW, not at the next launch's
@@ -350,4 +287,29 @@ async fn hook_handler(
         [(axum::http::header::CONNECTION, "close")],
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_discovery_builds_all_production_schemas() {
+        let router = SwarmAgentMcpServer::tool_router_agent_team();
+        let tools = router.list_all();
+        assert_eq!(tools.len(), 3);
+        for name in ["team_list_members", "team_dispatch", "team_report_result"] {
+            let tool = tools
+                .iter()
+                .find(|tool| tool.name == name)
+                .unwrap_or_else(|| panic!("missing {name}"));
+            assert_eq!(
+                tool.output_schema
+                    .as_ref()
+                    .and_then(|schema| schema.get("type"))
+                    .and_then(serde_json::Value::as_str),
+                Some("object")
+            );
+        }
+    }
 }

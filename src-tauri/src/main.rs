@@ -6,11 +6,13 @@ fn main() {
     {
         let args: Vec<String> = std::env::args().collect();
         if let Some(index) = args.iter().position(|a| a == "--terminal-fixture") {
-            swarmterm_lib::terminal_benchmark::fixture(args.get(index + 1).map(String::as_str).unwrap_or("static"));
+            swarm_agent_lib::terminal_benchmark::fixture(
+                args.get(index + 1).map(String::as_str).unwrap_or("static"),
+            );
             return;
         }
     }
-    // `swarmterm --statusline` is Claude Code's status line command: read its
+    // `swarm-agent --statusline` is Claude Code's status line command: read its
     // JSON from stdin, print one line, exit. Handled here, before `run()`, so
     // the Tauri builder / single-instance plugin / tray / AppKit are never
     // initialised for what is a sub-second CLI invocation.
@@ -21,14 +23,22 @@ fn main() {
     // GetStdHandle resolves them normally. ("GUI subsystem means no stdio" is
     // the intuitive-but-wrong read of that attribute.)
     if std::env::args().skip(1).any(|a| a == "--statusline") {
-        swarmterm_lib::statusline::run_cli();
+        swarm_agent_lib::statusline::run_cli();
         return;
     }
-    // `swarmterm --hook` is Claude Code's hook command: same pre-Tauri
+    // `swarm-agent --hook` is Claude Code's hook command: same pre-Tauri
     // short-circuit as above, and the same Windows stdio note applies.
     if std::env::args().skip(1).any(|a| a == "--hook") {
-        swarmterm_lib::hook::run_cli();
+        swarm_agent_lib::hook::run_cli();
         return;
     }
-    swarmterm_lib::run()
+    if std::env::args().nth(1).as_deref() == Some("--mcp-stdio") {
+        swarm_agent_lib::mcp::bridge::run_cli();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--agent-team-exited") {
+        swarm_agent_lib::hook::report_agent_exit();
+        return;
+    }
+    swarm_agent_lib::run()
 }

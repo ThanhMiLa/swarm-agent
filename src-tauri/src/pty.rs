@@ -216,11 +216,9 @@ pub struct CreateTerminalOptions {
     pub cwd: Option<String>,
     pub shell_id: Option<String>,
     pub initial_command: Option<String>,
-    /// Whether the owning workspace enables MCP worktree tools for this pty.
-    pub worktree_mode: Option<bool>,
-    /// The workspace's repo folder, recorded so worktree tools can resolve the
-    /// main root even when this pane's own cwd is a linked worktree.
-    pub repo_root: Option<String>,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    pub workspace_id: Option<String>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -251,14 +249,18 @@ impl CreateTerminalResult {
 /// (when set) owns the shell's whole process tree so closing the terminal frees
 /// every descendant, not just the shell.
 pub struct ManagedTerminal {
+    pub workspace_id: Option<String>,
+    pub mcp_token: String,
+    /// Valid only while the queued team paste is untouched by any other PTY input.
+    pub team_draft: Arc<Mutex<Option<String>>>,
+    pub agent_id: Option<String>,
+    pub cwd: std::path::PathBuf,
     pub input_token: Option<String>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub master: Box<dyn MasterPty + Send>,
     pub killer: Box<dyn ChildKiller + Send + Sync>,
     #[cfg(windows)]
     pub job: Option<job::JobHandle>,
-    pub worktree_mode: bool,
-    pub repo_root: Option<String>,
     pub flow: FlowController,
 }
 
@@ -285,32 +287,15 @@ pub struct AppState {
     /// at app boot; read by `spawn_terminal` to seed each shell's env, and by
     /// nothing else. `OnceLock` is used so the read side needs no lock; if the
     /// server failed to bind the cell stays empty and `spawn_terminal` skips
-    /// the env injection (browser preview via MCP just won't work).
+    /// the env injection.
     pub mcp_url: OnceLock<Arc<str>>,
-    /// War Room membership + inboxes, now multiple independent rooms. Its own
-    /// lock (never nested with `terminals`) so MCP tools keep the
-    /// lock-read-drop-before-await rule.
-    pub war_rooms: Mutex<crate::warroom::WarRooms>,
-    /// Panes an MCP client has actually spoken to us from. Its own lock, never
-    /// nested with `terminals` or `war_rooms`, because the `/mcp` middleware
-    /// touches it on every inbound request and must not contend with pty I/O.
+    pub agent_teams: Mutex<crate::agent_team::AgentTeams>,
     pub mcp_clients: Mutex<crate::mcp::clients::McpClients>,
     /// Last context-window percentage each Claude pane's status line reported
     /// via `/status?ctx=` (`mcp::context_usage`). Its own lock, never nested:
     /// `/status` hits it as often as every 300 ms per Claude pane while
     /// streaming, so it must not queue behind pty spawn/kill or MCP traffic.
     pub context_usage: Mutex<crate::mcp::context_usage::ContextUsage>,
-    /// Mirror of the renderer's per-pane agent display state plus a raw
-    /// screen tail (`mcp::peer_state`). Its own lock, never nested with
-    /// `terminals` / `war_rooms` / `mcp_clients`: `read_loop` touches it on
-    /// every pty chunk and `report_agent_state` on every renderer state
-    /// change, so it must never wait behind pty spawn/kill or MCP traffic.
-    pub peer_states: Mutex<crate::mcp::peer_state::PeerStates>,
-    /// Woken (`notify_waiters`) on every `peer_states` mutation so T3.2's
-    /// `war_room.wait_peer` can sleep event-driven instead of polling. A bare
-    /// `Notify` carries no payload on purpose: waiters re-read the snapshot
-    /// after each wake, which makes a lost intermediate change harmless.
-    pub peer_wake: tokio::sync::Notify,
 }
 
 impl Default for AppState {
@@ -319,11 +304,9 @@ impl Default for AppState {
             terminals: Mutex::new(HashMap::new()),
             quitting: AtomicBool::new(false),
             mcp_url: OnceLock::new(),
-            war_rooms: Mutex::new(crate::warroom::WarRooms::default()),
+            agent_teams: Mutex::new(Default::default()),
             mcp_clients: Mutex::new(crate::mcp::clients::McpClients::default()),
             context_usage: Mutex::new(Default::default()),
-            peer_states: Mutex::new(crate::mcp::peer_state::PeerStates::default()),
-            peer_wake: tokio::sync::Notify::new(),
         }
     }
 }
@@ -487,7 +470,7 @@ pub fn spawn_terminal(
     if let Some(fixture) = &options.benchmark_fixture {
         #[cfg(debug_assertions)]
         {
-            if std::env::var_os("SWARMTERM_BENCHMARK").is_some()
+            if std::env::var_os("SWARM_AGENT_BENCHMARK").is_some()
                 && ["static", "stream", "tui", "tui-stream"].contains(&fixture.as_str())
             {
                 cmd = CommandBuilder::new(std::env::current_exe().expect("benchmark executable"));
@@ -538,16 +521,11 @@ pub fn spawn_terminal(
         };
         cmd.env("PROMPT_COMMAND", combined);
     }
-    // Identify this session to in-terminal processes so an in-terminal agent
-    // can call Swarmterm's MCP server. `id` is the terminalId — a random UUID
-    // that only this shell's env sees — and doubles as the unguessable bearer
-    // token authorising the MCP call. `SWARMTERM_MCP_URL` points at the
-    // Streamable-HTTP endpoint bound at app boot; if the server failed to
-    // bind, we skip the URL var (agents just won't have the swarmterm server
-    // available) but still set the session so future subsystems can use it.
-    cmd.env("SWARMTERM_SESSION", &id);
+    // A pane ID survives respawn. Credentials must not survive with it.
+    let mcp_token = uuid::Uuid::new_v4().to_string();
+    cmd.env("SWARM_AGENT_SESSION", &mcp_token);
     if let Some(url) = state.mcp_url.get() {
-        cmd.env("SWARMTERM_MCP_URL", url.as_ref());
+        cmd.env("SWARM_AGENT_MCP_URL", url.as_ref());
     }
     let cwd = options.cwd.clone().unwrap_or_else(|| {
         app.path()
@@ -555,11 +533,15 @@ pub fn spawn_terminal(
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| ".".to_string())
     });
-    cmd.cwd(cwd);
-
-    // Clone worktree options to locals so they're available at the insert point.
-    let worktree_mode = options.worktree_mode.unwrap_or(false);
-    let repo_root = options.repo_root.clone();
+    cmd.cwd(&cwd);
+    crate::mcp::config::configure_terminal(&mut cmd, options.agent_id.as_deref());
+    let report_exit = options
+        .agent_id
+        .as_deref()
+        .is_some_and(crate::agent_team::supports_delivery)
+        && std::env::current_exe()
+            .map(|exe| cmd.env("SWARM_AGENT_BIN", exe))
+            .is_ok();
 
     let child = match pair.slave.spawn_command(cmd) {
         Ok(c) => c,
@@ -568,7 +550,7 @@ pub fn spawn_terminal(
     let pid = child.process_id();
     let killer = child.clone_killer();
 
-    let mut writer = match pair.master.take_writer() {
+    let writer = match pair.master.take_writer() {
         Ok(w) => w,
         Err(e) => {
             // The child already spawned; don't leave it orphaned.
@@ -590,36 +572,59 @@ pub fn spawn_terminal(
     #[cfg(windows)]
     let job = pid.and_then(job::JobHandle::capturing);
 
-    // Run the template's first command (clearing the screen first for the
-    // platform default shell so the prompt/echo don't linger above the program).
-    if let Some(ic) = &options.initial_command {
-        let line = if resolved.is_some() {
-            format!("{ic}\r")
-        } else {
-            let clear = if cfg!(windows) { "Clear-Host" } else { "clear" };
-            format!("{clear}; {ic}\r")
-        };
-        let _ = writer.write_all(line.as_bytes());
-        let _ = writer.flush();
-    }
-
     let flow_id = next_flow_id();
     let flow = FlowController::new(flow_id);
 
+    let startup = options.initial_command.as_deref().map(|command| {
+        crate::mcp::config::private_agent_command(options.agent_id.as_deref(), command)
+    });
+    let writer = Arc::new(Mutex::new(writer));
     state.terminals.lock().unwrap().insert(
         id.clone(),
         ManagedTerminal {
             input_token: options.input_token.clone(),
-            writer: Arc::new(Mutex::new(writer)),
+            writer: writer.clone(),
+            mcp_token,
+            team_draft: Default::default(),
+            workspace_id: options.workspace_id,
+            cwd: cwd.into(),
+            agent_id: options.agent_id,
             master: pair.master,
             killer,
             #[cfg(windows)]
             job,
-            worktree_mode,
-            repo_root,
             flow: flow.clone(),
         },
     );
+
+    // Run the template's first command (clearing the screen first for the
+    // platform default shell so the prompt/echo don't linger above the program).
+    if let Some(ic) = startup {
+        let exit = if report_exit {
+            let name = std::path::Path::new(&shell)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            match name.as_str() {
+                "cmd" => " & \"%SWARM_AGENT_BIN%\" --agent-team-exited",
+                "powershell" | "pwsh" => "; & $env:SWARM_AGENT_BIN --agent-team-exited",
+                _ => "; \"$SWARM_AGENT_BIN\" --agent-team-exited",
+            }
+        } else {
+            ""
+        };
+        let line = if resolved.is_some() {
+            format!("{ic}{exit}\r")
+        } else {
+            let clear = if cfg!(windows) { "Clear-Host" } else { "clear" };
+            format!("{clear}; {ic}{exit}\r")
+        };
+        if let Ok(mut writer) = writer.lock() {
+            let _ = writer.write_all(line.as_bytes());
+            let _ = writer.flush();
+        }
+    }
 
     let app = app.clone();
     std::thread::spawn(move || {
@@ -646,10 +651,6 @@ fn read_loop(
     let flow_id = flow.flow_id();
     let mut pending: Vec<u8> = Vec::new();
     let mut chunk = vec![0u8; READ_BUF_BYTES];
-    // Resolved once: `try_state` walks Tauri's type map, and this loop runs
-    // per pty chunk. `None` only during teardown, when there is nobody left
-    // to read the tail anyway.
-    let peer_state = app.try_state::<AppState>();
     'output: loop {
         match reader.read(&mut chunk) {
             Ok(0) => break,
@@ -662,18 +663,6 @@ fn read_loop(
                     if !flow.wait_for_credit(byte_len) {
                         let _ = child.kill();
                         break 'output;
-                    }
-                    // Tee the chunk into the Rust-side screen tail BEFORE the
-                    // renderer sees it, so a `read_peer` racing this chunk
-                    // never reads less than xterm shows. Lock scope is the
-                    // one statement — never held across the channel send.
-                    if let Some(state) = &peer_state {
-                        state.peer_states.lock().unwrap().push_output(
-                            &id,
-                            &text,
-                            crate::warroom::now_ms(),
-                        );
-                        state.peer_wake.notify_waiters();
                     }
                     if on_data
                         .send(PtyOut::Data(PtyDataPayload {
@@ -708,39 +697,22 @@ fn read_loop(
     // Remove from the registry BEFORE notifying the renderer: a retry triggered by
     // the exit event must find the id free, since create rejects a duplicate live id.
     if let Some(state) = app.try_state::<AppState>() {
-        state.terminals.lock().unwrap().remove(&id);
-        state.mcp_clients.lock().unwrap().forget(&id);
-        // Same-id respawn must start from "no data", not its predecessor's %.
-        state.context_usage.lock().unwrap().forget(&id);
-        // Drop the state mirror + screen tail and wake any `wait_peer` sleeper
-        // so it can report "peer left" instead of sitting out its timeout.
-        state.peer_states.lock().unwrap().forget(&id);
-        state.peer_wake.notify_waiters();
-        let left = state
-            .war_rooms
-            .lock()
-            .unwrap()
-            .leave_everywhere(&id, crate::warroom::now_ms());
-        if let Some((room_id, event)) = left {
-            use tauri::Emitter;
-            let _ = app.emit("warroom:event", &crate::warroom::scoped(&room_id, event));
-        }
-        // Same preview cleanup as kill_terminal: read_loop is the path a shell
-        // takes when it exits on its own (typed `exit`, crashed), where no one
-        // called kill_terminal. preview:closed tells the renderer too — the
-        // store's visibility effects assume webview lifetime is bounded by
-        // their own setup/cleanup, and a Rust-side close they never observe
-        // would leave a stale preview + a permanently hidden webview on the
-        // next preview_open.
-        if let Some(webview) = app.get_webview(&crate::preview::preview_label(&id)) {
-            let _ = webview.close();
-            use tauri::Emitter;
-            let _ = app.emit(
-                "preview:closed",
-                &crate::preview::PreviewClosedEvent {
-                    terminal_id: id.clone(),
-                },
-            );
+        let removed = {
+            let mut terminals = state.terminals.lock().unwrap();
+            if terminals
+                .get(&id)
+                .is_some_and(|t| t.flow.flow_id() == flow_id)
+            {
+                terminals.remove(&id)
+            } else {
+                None
+            }
+        };
+        if let Some(terminal) = removed {
+            cleanup_team_session(&app, &state, &id, &terminal);
+        } else {
+            let _ = on_data.send(PtyOut::Exit(PtyExitPayload { flow_id, exit_code }));
+            return;
         }
     }
     let _ = on_data.send(PtyOut::Exit(PtyExitPayload { flow_id, exit_code }));
@@ -754,6 +726,76 @@ pub fn ack_terminal_output(state: &AppState, id: &str, flow_id: u64, processed_b
     };
     if let Some(flow) = flow {
         flow.ack(flow_id, processed_bytes);
+    }
+}
+
+pub fn cleanup_team_session(
+    app: &AppHandle,
+    state: &AppState,
+    id: &str,
+    terminal: &ManagedTerminal,
+) {
+    state
+        .mcp_clients
+        .lock()
+        .unwrap()
+        .forget(&terminal.mcp_token);
+    state.context_usage.lock().unwrap().forget(id);
+    let changed = state
+        .agent_teams
+        .lock()
+        .unwrap()
+        .leave(&crate::agent_team::Session {
+            terminal_id: id.to_owned(),
+            generation: terminal.flow.flow_id(),
+        });
+    if changed {
+        crate::agent_team::notify(app);
+    }
+}
+
+impl AppState {
+    pub fn pane_session(&self, id: &str) -> Option<crate::agent_team::Session> {
+        let terminals = self.terminals.lock().unwrap();
+        terminals.get(id).map(|t| crate::agent_team::Session {
+            terminal_id: id.to_owned(),
+            generation: t.flow.flow_id(),
+        })
+    }
+    pub fn mcp_session(&self, token: &str) -> Option<crate::agent_team::Session> {
+        if token.trim().is_empty() {
+            return None;
+        }
+        let terminals = self.terminals.lock().unwrap();
+        terminals
+            .iter()
+            .find(|(_, t)| t.mcp_token == token.trim())
+            .map(|(id, t)| crate::agent_team::Session {
+                terminal_id: id.clone(),
+                generation: t.flow.flow_id(),
+            })
+    }
+    pub fn team_pane(
+        &self,
+        session: &crate::agent_team::Session,
+    ) -> Option<(std::path::PathBuf, String, bool)> {
+        let (cwd, agent, token) = {
+            let terminals = self.terminals.lock().unwrap();
+            let terminal = terminals
+                .get(&session.terminal_id)
+                .filter(|t| t.flow.flow_id() == session.generation)?;
+            (
+                terminal.cwd.clone(),
+                terminal.agent_id.clone()?,
+                terminal.mcp_token.clone(),
+            )
+        };
+        let connected = self
+            .mcp_clients
+            .lock()
+            .unwrap()
+            .has_discovered_tools(&token);
+        Some((cwd, agent, connected))
     }
 }
 

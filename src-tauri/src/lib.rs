@@ -1,12 +1,10 @@
 mod agents;
 mod analytics;
 mod commands;
-mod git;
 mod input_compatibility;
 mod json_style;
 mod links;
-mod mcp;
-mod preview;
+pub mod mcp;
 mod pty;
 mod pty_output;
 mod sessions;
@@ -15,12 +13,13 @@ pub mod token_usage;
 // Public so `main.rs` can reach `--statusline` without booting Tauri.
 pub mod statusline;
 // Public so `main.rs` can reach `--hook` without booting Tauri.
+mod agent_team;
+mod agent_team_commands;
 pub mod hook;
-mod tray;
-mod warroom;
-mod window_fit;
 #[cfg(debug_assertions)]
 pub mod terminal_benchmark;
+mod tray;
+mod window_fit;
 
 use pty::AppState;
 use std::sync::atomic::Ordering;
@@ -84,16 +83,14 @@ pub fn run() {
             // instead of dropping a .mcp.json into every project. One-shot,
             // idempotent, log-only.
             crate::mcp::config::register_user_scope(app.handle());
-            // Register `swarmterm --hook` under Claude Code's hook events in
+            // Register `swarm-agent --hook` under Claude Code's hook events in
             // ~/.claude/settings.json so Claude Code panes report exact
             // working/blocked/idle edges instead of relying on screen-scrape
             // alone. Additive on `hooks` (the user's own groups survive),
             // one-shot, idempotent, log-only. Must run BEFORE any pane launches
             // `claude`: hooks are snapshotted at session start.
             crate::hook::install::register(app.handle());
-            // Boot the MCP server. Any failure is logged and swallowed: browser
-            // preview via MCP just won't work for this run, but Swarmterm as a
-            // whole still functions.
+            // Boot the MCP server. Agent Team requires a local MCP connection.
             let handle_for_mcp = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match crate::mcp::start(handle_for_mcp).await {
@@ -122,13 +119,9 @@ pub fn run() {
             commands::ack_terminal_output,
             commands::resize_terminal,
             commands::kill_terminal,
-            commands::war_room_join,
-            commands::war_room_leave,
-            commands::war_room_rooms,
-            commands::war_room_create,
-            commands::war_room_rename,
-            commands::war_room_delete,
-            commands::war_room_moderator_send,
+            agent_team_commands::team_snapshot,
+            agent_team_commands::team_edit,
+            agent_team_commands::team_delivery,
             commands::report_agent_state,
             commands::list_available_shells,
             commands::list_available_agents,
@@ -139,23 +132,6 @@ pub fn run() {
             commands::find_available_editor,
             commands::open_in_editor,
             commands::reveal_in_file_manager,
-            commands::git_list_worktrees,
-            commands::git_get_changed_files,
-            commands::git_get_file_diff,
-            commands::git_get_commit_info,
-            commands::git_create_worktree,
-            commands::git_clear_worktree,
-            commands::git_branch_unmerged_count,
-            commands::git_merge_readiness,
-            commands::ensure_repo_with_commit,
-            preview::preview_open,
-            preview::preview_navigate,
-            preview::preview_reload,
-            preview::preview_back,
-            preview::preview_forward,
-            preview::preview_set_bounds,
-            preview::preview_set_visible,
-            preview::preview_close,
         ])
         .build(context)
         .expect("error while building tauri application")

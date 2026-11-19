@@ -1,6 +1,6 @@
 //! Per-pane context-window usage, fed by the status line's `/status` probe.
 //!
-//! `swarmterm --statusline` already knows the pane's `used_percentage` (Claude
+//! `swarm-agent --statusline` already knows the pane's `used_percentage` (Claude
 //! Code hands it over on stdin every render) and already makes one loopback
 //! request per render to prove the MCP link. That request now carries the
 //! number as `?ctx=<pct>` — one transport, zero extra round-trips.

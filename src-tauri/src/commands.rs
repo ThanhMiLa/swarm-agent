@@ -1,7 +1,7 @@
 use portable_pty::PtySize;
 use std::io::Write;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::pty::{AppState, CreateTerminalOptions, CreateTerminalResult, PtyOut};
 
@@ -50,10 +50,11 @@ async fn write_input(
         .unwrap()
         .get(id)
         .filter(|t| t.input_token == input_token)
-        .map(|t| t.writer.clone());
-    if let Some(writer) = writer {
+        .map(|t| (t.writer.clone(), t.team_draft.clone()));
+    if let Some((writer, draft)) = writer {
         tauri::async_runtime::spawn_blocking(move || {
             let mut writer = writer.lock().map_err(|e| e.to_string())?;
+            draft.lock().map_err(|e| e.to_string())?.take();
             for chunk in bytes.chunks(4096) {
                 writer.write_all(chunk).map_err(|e| e.to_string())?;
             }
@@ -105,81 +106,27 @@ pub fn kill_terminal(app: AppHandle, state: State<'_, AppState>, id: String) {
     // thread can re-lock the map to clear the id without deadlocking.
     let removed = state.terminals.lock().unwrap().remove(&id);
     if let Some(mut t) = removed {
+        crate::pty::cleanup_team_session(&app, &state, &id, &t);
         t.kill();
         // Dropping `t` (and its master PTY) at end of scope forces the reader's EOF.
     }
-    // A dead pane must not linger as a War Room ghost: peers would still see
-    // it in list_peers and queue messages for a terminal that can never read
-    // them. leave_everywhere() is idempotent, so racing read_loop's cleanup
-    // is harmless.
-    let left = state
-        .war_rooms
-        .lock()
-        .unwrap()
-        .leave_everywhere(&id, crate::warroom::now_ms());
-    if let Some((room_id, event)) = left {
-        let _ = app.emit("warroom:event", &crate::warroom::scoped(&room_id, event));
-    }
-    // A dead pane's preview must not linger as an orphaned native webview
-    // painting over nothing. Idempotent with the renderer's GC sweep and with
-    // read_loop below — whoever runs second finds the label gone.
-    //
-    // Closing the webview here is a Rust-side event the renderer's own
-    // setup/cleanup effects never see (this can fire on a same-id respawn or
-    // an agent/cwd/shell switch, not just a pane close), so emit preview:closed
-    // to fold it into browser-store — otherwise the address bar shows a stale
-    // preview and the next preview_open recreates the webview hidden with no
-    // effect re-run left to show it.
-    if let Some(webview) = app.get_webview(&crate::preview::preview_label(&id)) {
-        let _ = webview.close();
-        let _ = app.emit(
-            "preview:closed",
-            &crate::preview::PreviewClosedEvent {
-                terminal_id: id.clone(),
-            },
-        );
-    }
-    // A respawned pane reuses its id, so a stale `connected` verdict would
-    // survive into the new shell and hide the very failure the status line
-    // exists to show. Drop it here and in `read_loop`, mirroring the two
-    // places the terminal leaves `AppState.terminals`.
-    state.mcp_clients.lock().unwrap().forget(&id);
-    // The context chip too: a respawned Claude must not inherit the old %.
-    state.context_usage.lock().unwrap().forget(&id);
-    // Same for the agent-state mirror + screen tail: a respawn must start
-    // from `unknown`, and a `wait_peer` sleeper on this id must wake now to
-    // see the peer gone rather than run out its timeout.
-    state.peer_states.lock().unwrap().forget(&id);
-    state.peer_wake.notify_waiters();
 }
 
-/// Renderer → Rust mirror of a pane's agent display state (`working` /
-/// `blocked` / `idle` / `done` / `unknown`), fed by `lib/agent-state-mirror`.
-/// Rust cannot derive this itself (the heuristics run over xterm's buffer in
-/// the renderer), and the M2 `war_room.wait_peer` / `read_peer` verbs must
-/// answer without a renderer round-trip — see `mcp::peer_state`.
+/// Refresh token statistics and release the review reservation when the leader returns to idle.
 #[tauri::command]
 pub fn report_agent_state(app: AppHandle, state: State<'_, AppState>, id: String, display: String) {
-    // Only live terminals may be written. A report can race a kill (the
-    // store's diff fires after `kill_terminal` already ran `forget`), and
-    // accepting it would resurrect a row for a dead pty that nothing will
-    // ever clean up again. The two locks are taken SEQUENTIALLY — check
-    // `terminals`, drop it, then lock `peer_states` — never nested, per the
-    // own-lock rule on `AppState`.
-    let live = state.terminals.lock().unwrap().contains_key(&id);
-    if !live {
+    let Some(session) = state.pane_session(&id) else {
         return;
-    }
-    let changed =
-        state
-            .peer_states
+    };
+    if matches!(display.as_str(), "done" | "idle")
+        && state
+            .agent_teams
             .lock()
             .unwrap()
-            .set_state(&id, &display, crate::warroom::now_ms());
-    if changed {
-        state.peer_wake.notify_waiters();
+            .review_idle(&session, crate::agent_team::now_ms())
+    {
+        crate::agent_team::notify(&app);
     }
-
     if display == "done" || display == "idle" {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -219,118 +166,6 @@ pub async fn list_agent_sessions(folder: String) -> Vec<crate::sessions::Session
 #[tauri::command]
 pub fn set_claude_statusline(app: AppHandle, enabled: bool) -> Result<(), String> {
     crate::statusline::install::apply(&app, enabled)
-}
-
-#[tauri::command]
-pub async fn git_list_worktrees(
-    app: AppHandle,
-    cwd: String,
-) -> Result<Vec<crate::git::WorktreeInfo>, String> {
-    let home = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("no home dir: {e}"))?;
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::list_worktrees(std::path::Path::new(&cwd), &home)
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_get_changed_files(
-    worktree_path: String,
-) -> Result<Vec<crate::git::ChangedFile>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::get_changed_files(std::path::Path::new(&worktree_path))
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_get_file_diff(worktree_path: String, file: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::get_file_diff(std::path::Path::new(&worktree_path), &file)
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_get_commit_info(worktree_path: String) -> Result<crate::git::CommitInfo, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::get_commit_info(std::path::Path::new(&worktree_path))
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_branch_unmerged_count(repo_root: String, branch: String) -> Result<u32, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::branch_unmerged_count(std::path::Path::new(&repo_root), &branch)
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_merge_readiness(
-    repo_root: String,
-    branch: String,
-) -> Result<crate::git::MergeReadiness, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::merge_readiness(std::path::Path::new(&repo_root), &branch)
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_create_worktree(
-    repo_root: String,
-    branch: String,
-) -> Result<crate::git::CreatedWorktree, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::create_worktree(std::path::Path::new(&repo_root), &branch)
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn git_clear_worktree(
-    repo_root: String,
-    worktree_path: String,
-    branch: String,
-) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::clear_worktree(
-            std::path::Path::new(&repo_root),
-            std::path::Path::new(&worktree_path),
-            &branch,
-        )
-    })
-    .await
-    .map_err(|e| format!("git task failed: {e}"))?
-}
-
-/// Ensure a directory is a git repository with at least one commit.
-/// Frontend calls this during workspace creation when isolate=true and the
-/// folder is not yet a git repo. `home` is resolved here (like git_list_worktrees)
-/// so the backend can ignore a repo that merely contains the folder.
-#[tauri::command]
-pub async fn ensure_repo_with_commit(app: AppHandle, path: String) -> Result<(), String> {
-    let home = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("no home dir: {e}"))?;
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::git::ensure_repo_with_commit(std::path::Path::new(&path), &home)
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 /// Resolve a path candidate the renderer found in terminal output. Returns the
@@ -402,155 +237,6 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
 
 /// Frontend drags a pane into one room's drop zone. Metadata is a frontend
 /// snapshot: the leaf's explicit agentId and the registry's live cwd — the
-/// Rust terminal map deliberately stores neither. Joining room X while
-/// already a member of room Y moves it: `WarRooms::join` leaves Y first.
-#[tauri::command]
-pub fn war_room_join(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    room_id: String,
-    terminal_id: String,
-    agent_id: Option<String>,
-    cwd: String,
-    display_name: String,
-) -> Result<(), String> {
-    // TOCTOU: this liveness check and the `war_rooms.join` insert below take
-    // two separate mutexes with no lock held across both, so a pane that dies
-    // in the gap between them still gets inserted as a member. Accepted: it's
-    // recoverable via the chip's ✕ / leave, and the alternative (a single
-    // lock spanning both maps) isn't worth the coupling for a rare, low-cost
-    // race — leaves a ghost member, not a stuck or corrupted state.
-    if !state.terminals.lock().unwrap().contains_key(&terminal_id) {
-        return Err(format!("terminal \"{terminal_id}\" is not live"));
-    }
-    // Without the MCP server the room's tools are unreachable — joining would
-    // look successful while nothing works. Fail loudly instead (spec §failure
-    // modes); the renderer logs it and the pane simply doesn't join.
-    if state.mcp_url.get().is_none() {
-        return Err("MCP server failed to start this run — War Room is unavailable".into());
-    }
-    let outcome = state.war_rooms.lock().unwrap().join(
-        &room_id,
-        terminal_id,
-        agent_id,
-        cwd,
-        display_name,
-        crate::warroom::now_ms(),
-    )?;
-    // Old room's Leave first, then the Join — the renderer's queue cleanup
-    // must run before the new membership appears.
-    if let Some((old_room, ev)) = outcome.left {
-        let _ = app.emit("warroom:event", &crate::warroom::scoped(&old_room, ev));
-    }
-    let _ = app.emit(
-        "warroom:event",
-        &crate::warroom::scoped(&room_id, outcome.joined),
-    );
-    Ok(())
-}
-
-/// Full rooms snapshot for renderer hydration (boot / dev reload).
-#[tauri::command]
-pub fn war_room_rooms(state: State<'_, AppState>) -> Vec<crate::warroom::RoomInfo> {
-    state.war_rooms.lock().unwrap().rooms_info()
-}
-
-#[tauri::command]
-pub fn war_room_leave(app: AppHandle, state: State<'_, AppState>, terminal_id: String) {
-    let left = state
-        .war_rooms
-        .lock()
-        .unwrap()
-        .leave_everywhere(&terminal_id, crate::warroom::now_ms());
-    if let Some((room_id, event)) = left {
-        let _ = app.emit("warroom:event", &crate::warroom::scoped(&room_id, event));
-    }
-}
-
-#[tauri::command]
-pub fn war_room_create(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<crate::warroom::RoomMeta, String> {
-    let (meta, rooms) = {
-        let mut reg = state.war_rooms.lock().unwrap();
-        let meta = reg.create(&name)?;
-        (meta, reg.rooms_meta())
-    };
-    let _ = app.emit("warroom:rooms", &rooms);
-    Ok(meta)
-}
-
-#[tauri::command]
-pub fn war_room_rename(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    room_id: String,
-    name: String,
-) -> Result<(), String> {
-    let rooms = {
-        let mut reg = state.war_rooms.lock().unwrap();
-        reg.rename(&room_id, &name)?;
-        reg.rooms_meta()
-    };
-    let _ = app.emit("warroom:rooms", &rooms);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn war_room_delete(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    room_id: String,
-) -> Result<(), String> {
-    let (leaves, rooms) = {
-        let mut reg = state.war_rooms.lock().unwrap();
-        let leaves = reg.delete(&room_id, crate::warroom::now_ms())?;
-        (leaves, reg.rooms_meta())
-    };
-    // Leaves first (queue/held cleanup per member), snapshot last (tab strip).
-    for ev in leaves {
-        let _ = app.emit("warroom:event", &crate::warroom::scoped(&room_id, ev));
-    }
-    let _ = app.emit("warroom:rooms", &rooms);
-    Ok(())
-}
-
-/// The user speaking as the Moderator of ONE room, from that room's composer.
-/// Same lock-then-emit discipline; error strings surface inline in the composer.
-#[tauri::command]
-pub fn war_room_moderator_send(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    room_id: String,
-    to: Option<String>,
-    content: String,
-    mode: Option<String>,
-) -> Result<usize, String> {
-    let mode = crate::warroom::MessageMode::parse(mode.as_deref())?;
-    let (event, deliveries) = {
-        let mut reg = state.war_rooms.lock().unwrap();
-        let entry = reg
-            .get(&room_id)
-            .ok_or_else(|| format!("no such room \"{room_id}\""))?;
-        let out = entry.room.send(
-            crate::warroom::MODERATOR_ID,
-            to.as_deref(),
-            &content,
-            mode,
-            crate::warroom::now_ms(),
-        )?;
-        (out.event, out.deliveries)
-    };
-    let delivered = deliveries.len();
-    let _ = app.emit("warroom:event", &crate::warroom::scoped(&room_id, event));
-    for d in deliveries {
-        let _ = app.emit("warroom:deliver", &d);
-    }
-    Ok(delivered)
-}
-
 #[tauri::command]
 pub async fn get_token_usage_stats(
     app: AppHandle,
@@ -615,14 +301,18 @@ mod terminal_io_tests {
         state.terminals.lock().unwrap().insert(
             "blocked".into(),
             ManagedTerminal {
+                mcp_token: String::new(),
+                team_draft: Default::default(),
+                workspace_id: None,
+                cwd: Default::default(),
+                agent_id: None,
                 input_token: None,
                 writer: writer.clone(),
                 master: pair.master,
                 killer: Box::new(NoopKiller),
                 #[cfg(windows)]
                 job: None,
-                worktree_mode: false,
-                repo_root: None,
+
                 flow: flow.clone(),
             },
         );
@@ -676,14 +366,18 @@ mod terminal_io_tests {
         state.terminals.lock().unwrap().insert(
             "reused-id".into(),
             ManagedTerminal {
+                mcp_token: String::new(),
+                team_draft: Default::default(),
+                workspace_id: None,
+                cwd: Default::default(),
+                agent_id: None,
                 input_token: Some("new-session".into()),
                 writer: Arc::new(Mutex::new(Box::new(Recorder(recorded.clone())))),
                 master: pair.master,
                 killer: Box::new(NoopKiller),
                 #[cfg(windows)]
                 job: None,
-                worktree_mode: false,
-                repo_root: None,
+
                 flow: FlowController::new(1000),
             },
         );

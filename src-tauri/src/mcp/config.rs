@@ -4,34 +4,34 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-/// The MCP entry Swarmterm writes into `.mcp.json`. Uses `${VAR}` syntax that
+/// The MCP entry SwarmAgent writes into `.mcp.json`. Uses `${VAR}` syntax that
 /// Claude Code expands from the shell env — the two vars are set on every PTY
 /// by `pty::spawn_terminal`.
-pub fn swarmterm_entry() -> Value {
+pub fn swarm_agent_entry() -> Value {
     json!({
         "type": "http",
-        "url": "${SWARMTERM_MCP_URL}",
-        "headers": { "Authorization": "Bearer ${SWARMTERM_SESSION}" }
+        "url": "${SWARM_AGENT_MCP_URL}",
+        "headers": { "Authorization": "Bearer ${SWARM_AGENT_SESSION}" }
     })
 }
 
-/// The MCP entry Swarmterm writes into qwen's `settings.json`. Qwen Code
+/// The MCP entry SwarmAgent writes into qwen's `settings.json`. Qwen Code
 /// resolves `$VAR`/`${VAR}` in settings strings from the process environment
 /// (packages/core envVarResolver), so — like Claude Code and unlike Codex —
 /// a placeholder entry written once serves every pane. HTTP transport uses
 /// the `httpUrl` key (qwen's `url` means SSE).
-pub fn swarmterm_qwen_entry() -> Value {
+pub fn swarm_agent_qwen_entry() -> Value {
     json!({
-        "httpUrl": "${SWARMTERM_MCP_URL}",
-        "headers": { "Authorization": "Bearer ${SWARMTERM_SESSION}" }
+        "httpUrl": "${SWARM_AGENT_MCP_URL}",
+        "headers": { "Authorization": "Bearer ${SWARM_AGENT_SESSION}" }
     })
 }
 
 /// Produce new contents for a JSON config with a `mcpServers` object:
-/// * If `existing` is `None` or blank, return a file with only Swarmterm.
+/// * If `existing` is `None` or blank, return a file with only SwarmAgent.
 /// * If `existing` parses as JSON with a `mcpServers` object, merge the
-///   `swarmterm` entry KEY BY KEY — Swarmterm-owned keys are overwritten so
-///   the current shape always wins, but keys the user added under `swarmterm`
+///   `swarm-agent` entry KEY BY KEY — SwarmAgent-owned keys are overwritten so
+///   the current shape always wins, but keys the user added under `swarm-agent`
 ///   (qwen's `trust`/`timeout`, say) survive. Other server entries are
 ///   untouched.
 /// * If `existing` is malformed JSON, return `Err` — the caller logs it and
@@ -53,7 +53,13 @@ fn merge_mcp_servers_json(existing: Option<&str>, entry: Value) -> Result<String
         return Err("mcpServers is not an object".into());
     }
     let servers = servers.as_object_mut().unwrap();
-    match servers.get_mut("swarmterm") {
+    // Migrate only the previous app-owned entry; keep user-defined servers.
+    if legacy_json_server(servers.get("swarmterm")) {
+        if let Some(previous) = servers.shift_remove("swarmterm") {
+            servers.entry("swarm-agent").or_insert(previous);
+        }
+    }
+    match servers.get_mut("swarm-agent") {
         // Existing object entry: overwrite only the keys we own.
         Some(Value::Object(slot)) => {
             for (k, v) in entry.as_object().expect("entry is an object") {
@@ -62,7 +68,7 @@ fn merge_mcp_servers_json(existing: Option<&str>, entry: Value) -> Result<String
         }
         // Absent, or a non-object left by something else: replace wholesale.
         _ => {
-            servers.insert("swarmterm".to_string(), entry);
+            servers.insert("swarm-agent".to_string(), entry);
         }
     }
     // Style is detected on the RAW `existing` text, not the trimmed copy fed
@@ -72,11 +78,26 @@ fn merge_mcp_servers_json(existing: Option<&str>, entry: Value) -> Result<String
 }
 
 /// Whether `config` (a parsed root object) already carries every key of
-/// `entry` under `mcpServers.swarmterm` with our exact values. User-added
+/// `entry` under `mcpServers.swarm-agent` with our exact values. User-added
 /// extra keys are fine — the merge preserves them, so they must not force a
 /// rewrite on every boot.
+fn legacy_json_server(server: Option<&Value>) -> bool {
+    server.is_some_and(|server| {
+        ["url", "httpUrl"]
+            .iter()
+            .any(|key| server.get(key).and_then(Value::as_str) == Some("${SWARMTERM_MCP_URL}"))
+            && server
+                .pointer("/headers/Authorization")
+                .and_then(Value::as_str)
+                == Some("Bearer ${SWARMTERM_SESSION}")
+    })
+}
+
 fn entry_is_current(config: &Value, entry: &Value) -> bool {
-    match config.get("mcpServers").and_then(|m| m.get("swarmterm")) {
+    if legacy_json_server(config.pointer("/mcpServers/swarmterm")) {
+        return false;
+    }
+    match config.get("mcpServers").and_then(|m| m.get("swarm-agent")) {
         Some(cur) => entry
             .as_object()
             .expect("entry is an object")
@@ -139,7 +160,7 @@ fn strip_json_comments(s: &str) -> String {
     out
 }
 
-/// Merge-write a `swarmterm` MCP entry into a JSON config at `path` (read →
+/// Merge-write a `swarm-agent` MCP entry into a JSON config at `path` (read →
 /// `merge_mcp_servers_json` → write tmp → rename). The tmp+rename means a
 /// crash mid-write can never truncate the target — important for
 /// `~/.claude.json` and qwen's `settings.json`, which hold far more than MCP
@@ -181,7 +202,7 @@ fn write_mcp_servers_json_to_file(
         if strict.is_none() && lenient.is_some() {
             return Err(
                 "file contains comments (the CLI tolerates them; rewriting would strip them) — \
-                 add the swarmterm entry manually"
+                 add the swarm-agent entry manually"
                     .into(),
             );
         }
@@ -204,7 +225,7 @@ fn write_mcp_servers_json_to_file(
 /// created here (a missing/typo'd CLAUDE_CONFIG_DIR must fail, not be
 /// fabricated).
 pub fn write_mcp_config_to_file(path: &Path) -> Result<(), String> {
-    write_mcp_servers_json_to_file(path, swarmterm_entry(), false)
+    write_mcp_servers_json_to_file(path, swarm_agent_entry(), false)
 }
 
 /// Qwen Code variant (`settings.json` under `$QWEN_HOME` or `~/.qwen`). An
@@ -214,15 +235,15 @@ pub fn write_qwen_settings_to_file(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
-    write_mcp_servers_json_to_file(path, swarmterm_qwen_entry(), true)
+    write_mcp_servers_json_to_file(path, swarm_agent_qwen_entry(), true)
 }
 
-/// Register Swarmterm's MCP server once in Claude Code's user-scope config
-/// (`~/.claude.json`) so every terminal Swarmterm spawns — in any folder or
+/// Register SwarmAgent's MCP server once in Claude Code's user-scope config
+/// (`~/.claude.json`) so every terminal SwarmAgent spawns — in any folder or
 /// worktree — discovers it without a per-project `.mcp.json`. Idempotent: the
 /// entry is placeholder-only, so re-running on an already-registered config
 /// writes identical bytes. Log-only: a failure here must never block boot, and
-/// leaves Swarmterm fully usable minus the agent-facing MCP tools.
+/// leaves SwarmAgent fully usable minus the agent-facing MCP tools.
 pub fn register_user_scope(app: &AppHandle) {
     let home = match app.path().home_dir() {
         Ok(h) => h,
@@ -264,7 +285,7 @@ pub fn resolve_qwen_settings_path(home: &Path, qwen_home: Option<&str>) -> PathB
     }
 }
 
-/// Register Swarmterm's MCP server once in qwen's user-scope settings. The
+/// Register SwarmAgent's MCP server once in qwen's user-scope settings. The
 /// entry is placeholder-only (qwen expands env vars in settings), so this is
 /// idempotent and needs no bound URL. Log-only, like `register_user_scope`.
 pub fn register_qwen(app: &AppHandle) {
@@ -305,21 +326,42 @@ pub fn merge_codex_config(existing: Option<&str>, url: &str) -> Result<String, S
         .entry("mcp_servers")
         .or_insert(toml_edit::Item::Table({
             // Implicit so an empty parent never renders a bare [mcp_servers]
-            // header above the real [mcp_servers.swarmterm] one.
+            // header above the real [mcp_servers.swarm-agent] one.
             let mut t = toml_edit::Table::new();
             t.set_implicit(true);
             t
         }))
         .as_table_mut()
         .ok_or("mcp_servers is not a table")?;
-    let mut entry = toml_edit::Table::new();
+    if legacy_codex_server(servers.get("swarmterm")) {
+        if let Some(previous) = servers.remove("swarmterm") {
+            servers.entry("swarm-agent").or_insert(previous);
+        }
+    }
+    let entry = servers
+        .entry("swarm-agent")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+        .ok_or("swarm-agent MCP config is not a table")?;
     entry.insert("url", toml_edit::value(url));
     entry.insert(
         "bearer_token_env_var",
-        toml_edit::value("SWARMTERM_SESSION"),
+        toml_edit::value("SWARM_AGENT_SESSION"),
     );
-    servers.insert("swarmterm", toml_edit::Item::Table(entry));
     Ok(doc.to_string())
+}
+
+fn legacy_codex_server(server: Option<&toml_edit::Item>) -> bool {
+    server.is_some_and(|server| {
+        server
+            .get("bearer_token_env_var")
+            .and_then(toml_edit::Item::as_str)
+            == Some("SWARMTERM_SESSION")
+            && server
+                .get("url")
+                .and_then(toml_edit::Item::as_str)
+                .is_some_and(|url| url.starts_with("http://127.0.0.1:") && url.ends_with("/mcp"))
+    })
 }
 
 /// Same skip-if-current + tmp+rename policy as the Claude writer above.
@@ -331,13 +373,14 @@ pub fn write_codex_config_to_file(path: &Path, url: &str) -> Result<(), String> 
     };
     if let Some(s) = existing.as_deref() {
         if let Ok(doc) = s.parse::<toml_edit::DocumentMut>() {
-            let current = doc.get("mcp_servers").and_then(|m| m.get("swarmterm"));
+            let current = doc.get("mcp_servers").and_then(|m| m.get("swarm-agent"));
             let url_ok = current.and_then(|c| c.get("url")).and_then(|v| v.as_str()) == Some(url);
             let bearer_ok = current
                 .and_then(|c| c.get("bearer_token_env_var"))
                 .and_then(|v| v.as_str())
-                == Some("SWARMTERM_SESSION");
-            if url_ok && bearer_ok {
+                == Some("SWARM_AGENT_SESSION");
+            let legacy = doc.get("mcp_servers").and_then(|m| m.get("swarmterm"));
+            if url_ok && bearer_ok && !legacy_codex_server(legacy) {
                 return Ok(());
             }
         }
@@ -382,33 +425,251 @@ pub fn register_codex(app: &AppHandle, url: &str) {
     }
 }
 
+const TEAM_BRIDGE: &str = "swarm_agent_team";
+
+fn bridge_path() -> Result<PathBuf, String> {
+    std::env::current_exe().map_err(|e| e.to_string())
+}
+
+pub fn register_antigravity(app: &AppHandle) {
+    if crate::agents::find_agent_binary("agy").is_none() {
+        return;
+    }
+    let result = (|| {
+        let home = app.path().home_dir().map_err(|e| e.to_string())?;
+        let path = home.join(".gemini").join("config").join("mcp_config.json");
+        write_antigravity_config(&path, &bridge_path()?)
+    })();
+    if let Err(e) = result {
+        eprintln!("mcp: unable to configure Antigravity: {e}");
+    }
+}
+
+fn write_antigravity_config(path: &Path, command: &Path) -> Result<(), String> {
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.to_string()),
+    };
+    // Antigravity can leave an empty config file when no servers are registered.
+    let mut root = match existing
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        Some(text) => serde_json::from_str::<Value>(text).map_err(|e| e.to_string())?,
+        None => json!({}),
+    };
+    let entry = json!({ "command": command, "args": ["--mcp-stdio"] });
+    let servers = root
+        .as_object_mut()
+        .ok_or("Invalid Antigravity config")?
+        .entry("mcpServers")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or("Invalid Antigravity MCP servers")?;
+    let legacy = "swarmterm_agent_team";
+    let migrated = servers.get(legacy).is_some_and(|server| {
+        server.get("args") == entry.get("args")
+            && server
+                .get("command")
+                .and_then(Value::as_str)
+                .is_some_and(|path| {
+                    matches!(
+                        path.rsplit(['/', '\\']).next(),
+                        Some("swarmterm" | "swarmterm.exe" | "Swarmterm")
+                    )
+                })
+    });
+    if migrated {
+        if let Some(previous) = servers.shift_remove(legacy) {
+            servers.entry(TEAM_BRIDGE).or_insert(previous);
+        }
+    }
+    match servers.get_mut(TEAM_BRIDGE) {
+        Some(existing) if existing.get("args") != entry.get("args") => {
+            return Err(format!("MCP name {TEAM_BRIDGE} is already in use"));
+        }
+        Some(existing) if !migrated && existing.get("command") == entry.get("command") => {
+            return Ok(())
+        }
+        Some(existing) => existing["command"] = entry["command"].clone(),
+        None => {
+            servers.insert(TEAM_BRIDGE.into(), entry);
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let output = crate::json_style::JsonStyle::detect(existing.as_deref()).render(&root)?;
+    let temp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    fs::write(&temp, output).map_err(|e| e.to_string())?;
+    fs::rename(&temp, path).map_err(|e| {
+        let _ = fs::remove_file(&temp);
+        e.to_string()
+    })
+}
+
+pub fn configure_terminal(command: &mut portable_pty::CommandBuilder, agent: Option<&str>) {
+    if agent != Some("opencode") {
+        return;
+    }
+    let result = (|| -> Result<(), String> {
+        let mut config = match std::env::var("OPENCODE_CONFIG_CONTENT") {
+            Ok(raw) => serde_json::from_str::<Value>(&raw).map_err(|e| e.to_string())?,
+            Err(std::env::VarError::NotPresent) => serde_json::json!({}),
+            Err(e) => return Err(e.to_string()),
+        };
+        let bridge = bridge_path()?;
+        let root = config
+            .as_object_mut()
+            .ok_or("Invalid OpenCode config overlay")?;
+        let servers = root
+            .entry("mcp")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .ok_or("Invalid OpenCode MCP servers")?;
+        if servers.contains_key(TEAM_BRIDGE) {
+            return Err(format!("MCP name {TEAM_BRIDGE} is already in use"));
+        }
+        servers.insert(
+            TEAM_BRIDGE.into(),
+            serde_json::json!({
+                "type": "local", "command": [bridge, "--mcp-stdio"], "enabled": true
+            }),
+        );
+        command.env("OPENCODE_CONFIG_CONTENT", config.to_string());
+        Ok(())
+    })();
+    if let Err(error) = result {
+        eprintln!("mcp: unable to configure OpenCode: {error}");
+    }
+}
+
+/// Keep each CLI's MCP process in its own environment even on versions
+/// that otherwise share an app-server across terminal panes.
+pub fn private_agent_command<'a>(
+    agent: Option<&str>,
+    command: &'a str,
+) -> std::borrow::Cow<'a, str> {
+    use std::{borrow::Cow, sync::OnceLock};
+    static CODEX: OnceLock<bool> = OnceLock::new();
+    static OPENCODE: OnceLock<bool> = OnceLock::new();
+    let (name, flag, supported) = match agent {
+        Some("codex") => ("codex", "--no-daemon", &CODEX),
+        Some("opencode") => ("opencode", "--standalone", &OPENCODE),
+        _ => return Cow::Borrowed(command),
+    };
+    let Some(rest) = command.strip_prefix(name) else {
+        return Cow::Borrowed(command);
+    };
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return Cow::Borrowed(command);
+    }
+    if rest.split_whitespace().any(|arg| arg == flag) {
+        return Cow::Borrowed(command);
+    }
+    if *supported.get_or_init(|| supports_flag(name, flag)) {
+        Cow::Owned(format!("{name} {flag}{rest}"))
+    } else {
+        Cow::Borrowed(command)
+    }
+}
+
+fn supports_flag(name: &str, flag: &str) -> bool {
+    let Some(executable) = crate::agents::find_agent_binary(name) else {
+        return false;
+    };
+    let mut command = std::process::Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    command.arg("--help").output().is_ok_and(|output| {
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout)
+                .split_whitespace()
+                .any(|word| word == flag)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migration_replaces_only_app_managed_mcp_entries() {
+        let old = r#"{"mcpServers":{"swarmterm":{"url":"${SWARMTERM_MCP_URL}","headers":{"Authorization":"Bearer ${SWARMTERM_SESSION}"},"trust":true},"custom":{"command":"custom"}}}"#;
+        let merged = parse(&merge_mcp_servers_json(Some(old), swarm_agent_entry()).unwrap());
+        assert!(merged["mcpServers"].get("swarmterm").is_none());
+        assert_eq!(merged["mcpServers"]["swarm-agent"]["trust"], true);
+        assert_eq!(merged["mcpServers"]["custom"]["command"], "custom");
+
+        let old = "[mcp_servers.swarmterm]\nurl = \"http://127.0.0.1:4567/mcp\"\nbearer_token_env_var = \"SWARMTERM_SESSION\"\nstartup_timeout_sec = 12\n";
+        let merged = merge_codex_config(Some(old), "http://127.0.0.1:9876/mcp").unwrap();
+        assert!(!merged.contains("[mcp_servers.swarmterm]"));
+        assert!(merged.contains("[mcp_servers.swarm-agent]"));
+        assert!(merged.contains("startup_timeout_sec = 12"));
+    }
+
+    #[test]
+    fn antigravity_registers_bridge_in_existing_empty_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("mcp_config.json");
+        let exe = temp.path().join("swarm-agent");
+        fs::write(&path, "").unwrap();
+        write_antigravity_config(&path, &exe).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            parse(&content)["mcpServers"][TEAM_BRIDGE],
+            json!({ "command": exe, "args": ["--mcp-stdio"] })
+        );
+        write_antigravity_config(&path, &exe).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), content);
+    }
+
+    #[test]
+    fn antigravity_keeps_existing_servers_and_leaves_invalid_config_untouched() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("mcp_config.json");
+        let original = json!({ "mcpServers": { "existing": { "command": "other-mcp" } } });
+        fs::write(&path, original.to_string()).unwrap();
+        write_antigravity_config(&path, Path::new("swarm-agent")).unwrap();
+        let updated = parse(&fs::read_to_string(&path).unwrap());
+        assert_eq!(
+            updated["mcpServers"]["existing"],
+            original["mcpServers"]["existing"]
+        );
+
+        fs::write(&path, "{broken").unwrap();
+        assert!(write_antigravity_config(&path, Path::new("swarm-agent")).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{broken");
+    }
 
     fn parse(s: &str) -> Value {
         serde_json::from_str(s).unwrap()
     }
 
     fn merge_claude(existing: Option<&str>) -> Result<String, String> {
-        merge_mcp_servers_json(existing, swarmterm_entry())
+        merge_mcp_servers_json(existing, swarm_agent_entry())
     }
 
     fn merge_qwen(existing: Option<&str>) -> Result<String, String> {
-        merge_mcp_servers_json(existing, swarmterm_qwen_entry())
+        merge_mcp_servers_json(existing, swarm_agent_qwen_entry())
     }
 
     #[test]
-    fn merge_preserves_user_added_keys_under_swarmterm() {
+    fn merge_preserves_user_added_keys_under_swarm_agent() {
         // qwen users add e.g. "trust": true under our entry to silence
         // per-tool confirmations — a boot must never clobber that.
-        let existing = r#"{"mcpServers":{"swarmterm":{"httpUrl":"stale","trust":true}}}"#;
+        let existing = r#"{"mcpServers":{"swarm-agent":{"httpUrl":"stale","trust":true}}}"#;
         let out = merge_qwen(Some(existing)).unwrap();
         let v = parse(&out);
-        assert_eq!(v["mcpServers"]["swarmterm"]["trust"], true);
+        assert_eq!(v["mcpServers"]["swarm-agent"]["trust"], true);
         assert_eq!(
-            v["mcpServers"]["swarmterm"]["httpUrl"],
-            "${SWARMTERM_MCP_URL}"
+            v["mcpServers"]["swarm-agent"]["httpUrl"],
+            "${SWARM_AGENT_MCP_URL}"
         );
     }
 
@@ -416,7 +677,7 @@ mod tests {
     fn write_skips_when_current_even_with_user_extras() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let content = r#"{"mcpServers":{"swarmterm":{"httpUrl":"${SWARMTERM_MCP_URL}","headers":{"Authorization":"Bearer ${SWARMTERM_SESSION}"},"trust":true}}}"#;
+        let content = r#"{"mcpServers":{"swarm-agent":{"httpUrl":"${SWARM_AGENT_MCP_URL}","headers":{"Authorization":"Bearer ${SWARM_AGENT_SESSION}"},"trust":true}}}"#;
         std::fs::write(&path, content).unwrap();
         write_qwen_settings_to_file(&path).unwrap();
         // Byte-identical: our keys were current, so the user extras never
@@ -428,7 +689,7 @@ mod tests {
     fn qwen_commented_file_with_current_entry_is_recognized() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let content = "// my settings\n{\"mcpServers\":{\"swarmterm\":{\"httpUrl\":\"${SWARMTERM_MCP_URL}\",\"headers\":{\"Authorization\":\"Bearer ${SWARMTERM_SESSION}\"}}}}";
+        let content = "// my settings\n{\"mcpServers\":{\"swarm-agent\":{\"httpUrl\":\"${SWARM_AGENT_MCP_URL}\",\"headers\":{\"Authorization\":\"Bearer ${SWARM_AGENT_SESSION}\"}}}}";
         std::fs::write(&path, content).unwrap();
         write_qwen_settings_to_file(&path).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
@@ -458,14 +719,17 @@ mod tests {
     fn creates_from_nothing() {
         let out = merge_claude(None).unwrap();
         let v = parse(&out);
-        assert_eq!(v["mcpServers"]["swarmterm"]["type"], "http");
-        assert_eq!(v["mcpServers"]["swarmterm"]["url"], "${SWARMTERM_MCP_URL}");
+        assert_eq!(v["mcpServers"]["swarm-agent"]["type"], "http");
+        assert_eq!(
+            v["mcpServers"]["swarm-agent"]["url"],
+            "${SWARM_AGENT_MCP_URL}"
+        );
     }
 
     #[test]
     fn creates_from_empty_string() {
         let out = merge_claude(Some("   ")).unwrap();
-        assert_eq!(parse(&out)["mcpServers"]["swarmterm"]["type"], "http");
+        assert_eq!(parse(&out)["mcpServers"]["swarm-agent"]["type"], "http");
     }
 
     #[test]
@@ -474,16 +738,16 @@ mod tests {
         let out = merge_claude(Some(existing)).unwrap();
         let v = parse(&out);
         assert_eq!(v["mcpServers"]["other"]["command"], "x");
-        assert_eq!(v["mcpServers"]["swarmterm"]["type"], "http");
+        assert_eq!(v["mcpServers"]["swarm-agent"]["type"], "http");
     }
 
     #[test]
-    fn replaces_existing_swarmterm_block() {
-        // If the user (or an old Swarmterm build) already had a swarmterm entry
+    fn replaces_existing_swarm_agent_block() {
+        // If the user (or an old SwarmAgent build) already had a swarm-agent entry
         // with stale headers, overwrite it so the current shape wins.
-        let existing = r#"{"mcpServers": {"swarmterm": {"type": "stdio"}}}"#;
+        let existing = r#"{"mcpServers": {"swarm-agent": {"type": "stdio"}}}"#;
         let out = merge_claude(Some(existing)).unwrap();
-        assert_eq!(parse(&out)["mcpServers"]["swarmterm"]["type"], "http");
+        assert_eq!(parse(&out)["mcpServers"]["swarm-agent"]["type"], "http");
     }
 
     #[test]
@@ -492,13 +756,14 @@ mod tests {
         let out = merge_claude(Some(existing)).unwrap();
         let v = parse(&out);
         assert_eq!(v["projects"]["foo"], 1);
-        assert_eq!(v["mcpServers"]["swarmterm"]["type"], "http");
+        assert_eq!(v["mcpServers"]["swarm-agent"]["type"], "http");
     }
 
     /// Byte offset of `"key"` in the rendered text — order is a TEXT property,
     /// `Value` equality is order-free.
     fn pos(text: &str, key: &str) -> usize {
-        text.find(&format!("\"{key}\"")).unwrap_or_else(|| panic!("{key} missing in {text}"))
+        text.find(&format!("\"{key}\""))
+            .unwrap_or_else(|| panic!("{key} missing in {text}"))
     }
 
     #[test]
@@ -511,21 +776,27 @@ mod tests {
     #[test]
     fn merge_keeps_four_space_indent_and_trailing_newline() {
         let out = merge_claude(Some("{\n    \"z\": 1\n}\n")).unwrap();
-        assert!(out.starts_with("{\n    \"z\": 1,\n    \"mcpServers\": {\n        \"swarmterm\": {\n            \"type\": \"http\""), "{out}");
+        assert!(out.starts_with("{\n    \"z\": 1,\n    \"mcpServers\": {\n        \"swarm-agent\": {\n            \"type\": \"http\""), "{out}");
         assert!(out.ends_with("}\n") && !out.ends_with("\n\n"), "{out}");
     }
 
     #[test]
     fn merge_keeps_tab_indent_and_no_trailing_newline() {
         let out = merge_claude(Some("{\n\t\"z\": 1\n}")).unwrap();
-        assert!(out.contains("\n\t\"mcpServers\": {\n\t\t\"swarmterm\": {\n\t\t\t\"type\""), "{out}");
+        assert!(
+            out.contains("\n\t\"mcpServers\": {\n\t\t\"swarm-agent\": {\n\t\t\t\"type\""),
+            "{out}"
+        );
         assert!(out.ends_with('}'), "{out}");
     }
 
     #[test]
     fn merge_of_compact_or_new_file_is_byte_identical_to_pretty() {
         let compact = merge_claude(Some(r#"{"z":1}"#)).unwrap();
-        assert!(compact.starts_with("{\n  \"z\": 1,\n  \"mcpServers\""), "{compact}");
+        assert!(
+            compact.starts_with("{\n  \"z\": 1,\n  \"mcpServers\""),
+            "{compact}"
+        );
         assert!(compact.ends_with('}'), "{compact}");
         let fresh = merge_claude(None).unwrap();
         assert_eq!(fresh, serde_json::to_string_pretty(&parse(&fresh)).unwrap());
@@ -572,8 +843,8 @@ mod tests {
         let path = dir.path().join(".claude.json");
         write_mcp_config_to_file(&path).unwrap();
         let contents = std::fs::read_to_string(&path).unwrap();
-        assert!(contents.contains("\"swarmterm\""));
-        assert!(contents.contains("${SWARMTERM_MCP_URL}"));
+        assert!(contents.contains("\"swarm-agent\""));
+        assert!(contents.contains("${SWARM_AGENT_MCP_URL}"));
     }
 
     #[test]
@@ -592,7 +863,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["numStartups"], 42);
         assert_eq!(v["mcpServers"]["1devtool"]["command"], "x");
-        assert_eq!(v["mcpServers"]["swarmterm"]["type"], "http");
+        assert_eq!(v["mcpServers"]["swarm-agent"]["type"], "http");
     }
 
     #[test]
@@ -608,7 +879,7 @@ mod tests {
     #[test]
     fn to_file_is_idempotent() {
         // Writing twice must leave byte-identical content: the second call sees
-        // the swarmterm entry already present and must not rewrite (no reformat).
+        // the swarm-agent entry already present and must not rewrite (no reformat).
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".claude.json");
         write_mcp_config_to_file(&path).unwrap();
@@ -620,12 +891,12 @@ mod tests {
 
     #[test]
     fn to_file_skips_rewrite_when_entry_already_present() {
-        // A file that already contains the exact swarmterm entry but in a
+        // A file that already contains the exact swarm-agent entry but in a
         // different (compact) formatting must be left byte-for-byte untouched —
         // we must not reformat/reorder the user's ~/.claude.json on repeat boots.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".claude.json");
-        let compact = r#"{"numStartups":7,"mcpServers":{"swarmterm":{"type":"http","url":"${SWARMTERM_MCP_URL}","headers":{"Authorization":"Bearer ${SWARMTERM_SESSION}"}}}}"#;
+        let compact = r#"{"numStartups":7,"mcpServers":{"swarm-agent":{"type":"http","url":"${SWARM_AGENT_MCP_URL}","headers":{"Authorization":"Bearer ${SWARM_AGENT_SESSION}"}}}}"#;
         std::fs::write(&path, compact).unwrap();
         write_mcp_config_to_file(&path).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
@@ -636,12 +907,12 @@ mod tests {
         let out = merge_qwen(None).unwrap();
         let v = parse(&out);
         assert_eq!(
-            v["mcpServers"]["swarmterm"]["httpUrl"],
-            "${SWARMTERM_MCP_URL}"
+            v["mcpServers"]["swarm-agent"]["httpUrl"],
+            "${SWARM_AGENT_MCP_URL}"
         );
         assert_eq!(
-            v["mcpServers"]["swarmterm"]["headers"]["Authorization"],
-            "Bearer ${SWARMTERM_SESSION}"
+            v["mcpServers"]["swarm-agent"]["headers"]["Authorization"],
+            "Bearer ${SWARM_AGENT_SESSION}"
         );
     }
 
@@ -654,8 +925,8 @@ mod tests {
         assert_eq!(v["ui"]["autoModeAcknowledged"], true);
         assert_eq!(v["mcpServers"]["other"]["command"], "x");
         assert_eq!(
-            v["mcpServers"]["swarmterm"]["httpUrl"],
-            "${SWARMTERM_MCP_URL}"
+            v["mcpServers"]["swarm-agent"]["httpUrl"],
+            "${SWARM_AGENT_MCP_URL}"
         );
     }
 
@@ -691,15 +962,15 @@ mod tests {
         let path = dir.path().join("settings.json");
         std::fs::write(
             &path,
-            r#"{"mcpServers":{"swarmterm":{"httpUrl":"http://127.0.0.1:9/mcp"}}}"#,
+            r#"{"mcpServers":{"swarm-agent":{"httpUrl":"http://127.0.0.1:9/mcp"}}}"#,
         )
         .unwrap();
         write_qwen_settings_to_file(&path).unwrap();
         let v: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
-            v["mcpServers"]["swarmterm"]["httpUrl"],
-            "${SWARMTERM_MCP_URL}"
+            v["mcpServers"]["swarm-agent"]["httpUrl"],
+            "${SWARM_AGENT_MCP_URL}"
         );
     }
 
@@ -718,9 +989,9 @@ mod tests {
     #[test]
     fn codex_creates_from_nothing() {
         let out = merge_codex_config(None, URL).unwrap();
-        assert!(out.contains("[mcp_servers.swarmterm]"));
+        assert!(out.contains("[mcp_servers.swarm-agent]"));
         assert!(out.contains(&format!("url = \"{URL}\"")));
-        assert!(out.contains("bearer_token_env_var = \"SWARMTERM_SESSION\""));
+        assert!(out.contains("bearer_token_env_var = \"SWARM_AGENT_SESSION\""));
     }
 
     #[test]
@@ -731,12 +1002,12 @@ mod tests {
         assert!(out.contains("# my codex settings"));
         assert!(out.contains("model = \"o4\""));
         assert!(out.contains("[mcp_servers.other]"));
-        assert!(out.contains("[mcp_servers.swarmterm]"));
+        assert!(out.contains("[mcp_servers.swarm-agent]"));
     }
 
     #[test]
     fn codex_updates_stale_url() {
-        let existing = "[mcp_servers.swarmterm]\nurl = \"http://127.0.0.1:9/mcp\"\nbearer_token_env_var = \"SWARMTERM_SESSION\"\n";
+        let existing = "[mcp_servers.swarm-agent]\nurl = \"http://127.0.0.1:9/mcp\"\nbearer_token_env_var = \"SWARM_AGENT_SESSION\"\n";
         let out = merge_codex_config(Some(existing), URL).unwrap();
         assert!(out.contains(&format!("url = \"{URL}\"")));
         assert!(!out.contains("127.0.0.1:9"));

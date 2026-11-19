@@ -1,11 +1,11 @@
 //! MCP server: an in-process HTTP endpoint that in-terminal AI agents call to
-//! drive Swarmterm (open a browser preview today; more tools later).
+//! coordinate workspace Agent Team runs.
 
 pub mod auth;
+pub mod bridge;
 pub mod clients;
 pub mod config;
 pub mod context_usage;
-pub mod peer_state;
 pub mod server;
 pub mod tools;
 
@@ -25,20 +25,31 @@ pub async fn start(app: AppHandle) -> Result<Arc<str>, String> {
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
     let url: Arc<str> = Arc::from(format!("http://{addr}/mcp"));
 
-    // Store before spawning so any race with early PTY creation still sees it.
-    let state = app.state::<AppState>();
-    state
+    // Prepare CLI configuration before a newly started pane can use this endpoint.
+    config::register_codex(&app, &url);
+    config::register_qwen(&app);
+    config::register_antigravity(&app);
+    app.state::<AppState>()
         .mcp_url
         .set(url.clone())
-        .map_err(|_| "mcp: mcp_url already set (start called twice?)".to_string())?;
+        .map_err(|_| "MCP endpoint was already configured".to_string())?;
 
-    // Codex reads MCP servers from config.toml at session start and cannot
-    // expand env vars in `url`, so the concrete URL is (re)written every boot.
-    config::register_codex(&app, &url);
-    // Qwen expands env vars in settings.json, so its placeholder entry is
-    // written once (Claude-style); it just rides along at the same call site.
-    config::register_qwen(&app);
-
+    let timer_app = app.clone();
+    tokio::spawn(async move {
+        let mut timer = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            timer.tick().await;
+            if timer_app
+                .state::<AppState>()
+                .agent_teams
+                .lock()
+                .unwrap()
+                .expire(crate::agent_team::now_ms())
+            {
+                crate::agent_team::notify(&timer_app);
+            }
+        }
+    });
     let router = server::axum_router(app.clone());
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, router).await {
