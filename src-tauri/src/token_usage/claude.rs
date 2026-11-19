@@ -165,7 +165,9 @@ pub fn parse_claude_session_file(path: &Path, fallback_folder: &str) -> Vec<Prom
                 .get("id")
                 .and_then(Value::as_str)
                 .map(str::to_owned)
-                .unwrap_or_else(|| format!("msg-{turn_counter}-{}", current_assistant_by_msg_id.len()));
+                .unwrap_or_else(|| {
+                    format!("msg-{turn_counter}-{}", current_assistant_by_msg_id.len())
+                });
 
             let model = msg
                 .get("model")
@@ -174,8 +176,14 @@ pub fn parse_claude_session_file(path: &Path, fallback_folder: &str) -> Vec<Prom
                 .to_string();
 
             if let Some(usage) = msg.get("usage") {
-                let inp = usage.get("input_tokens").and_then(Value::as_u64).unwrap_or(0);
-                let out = usage.get("output_tokens").and_then(Value::as_u64).unwrap_or(0);
+                let inp = usage
+                    .get("input_tokens")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let out = usage
+                    .get("output_tokens")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
                 let cache_read = usage
                     .get("cache_read_input_tokens")
                     .and_then(Value::as_u64)

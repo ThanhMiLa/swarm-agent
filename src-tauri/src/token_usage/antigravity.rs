@@ -77,10 +77,17 @@ pub fn load_workspace_mappings_for_root(root: &Path, map: &mut HashMap<String, S
         let Ok(uris) = serde_json::from_str::<Value>(uris_str) else {
             continue;
         };
-        if let Some(first_uri) = uris.as_array().and_then(|a| a.first()).and_then(Value::as_str) {
+        if let Some(first_uri) = uris
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(Value::as_str)
+        {
             if let Ok(parsed) = url::Url::parse(first_uri) {
                 if let Ok(file_path) = parsed.to_file_path() {
-                    map.insert(cid.to_string(), normalize_path(&file_path.to_string_lossy()));
+                    map.insert(
+                        cid.to_string(),
+                        normalize_path(&file_path.to_string_lossy()),
+                    );
                 }
             }
         }
@@ -125,7 +132,11 @@ pub fn extract_model_name(content: &str) -> Option<String> {
     };
 
     let trimmed = candidate.trim().trim_matches('`').trim();
-    if !trimmed.is_empty() && trimmed.len() < 60 && !trimmed.contains('\n') && !trimmed.contains('<') {
+    if !trimmed.is_empty()
+        && trimmed.len() < 60
+        && !trimmed.contains('\n')
+        && !trimmed.contains('<')
+    {
         Some(trimmed.to_string())
     } else {
         None
@@ -221,8 +232,14 @@ pub fn parse_antigravity_transcript(
             in_turn = true;
         } else if t == "PLANNER_RESPONSE" && in_turn {
             current_input += obj.get("input_tokens").and_then(Value::as_u64).unwrap_or(0);
-            current_cache += obj.get("cache_read_tokens").and_then(Value::as_u64).unwrap_or(0);
-            current_output += obj.get("output_tokens").and_then(Value::as_u64).unwrap_or(0);
+            current_cache += obj
+                .get("cache_read_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            current_output += obj
+                .get("output_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             if current_ts_ms == 0 {
                 let ts_str = obj.get("created_at").and_then(Value::as_str).unwrap_or("");
                 if let Some((ts_ms, date)) = parse_iso_timestamp(ts_str) {

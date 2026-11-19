@@ -172,7 +172,10 @@ pub fn parse_rollout_file(path: &Path) -> Vec<PromptTurnRecord> {
                 continue;
             };
 
-            let raw_input = usage.get("input_tokens").and_then(Value::as_u64).unwrap_or(0);
+            let raw_input = usage
+                .get("input_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             let cached_in = usage
                 .get("cached_input_tokens")
                 .and_then(Value::as_u64)
@@ -183,7 +186,10 @@ pub fn parse_rollout_file(path: &Path) -> Vec<PromptTurnRecord> {
                 .unwrap_or(0);
             let cache_tokens = cached_in + cache_write;
             let input_tokens = raw_input.saturating_sub(cache_tokens);
-            let output_tokens = usage.get("output_tokens").and_then(Value::as_u64).unwrap_or(0);
+            let output_tokens = usage
+                .get("output_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             let total_tokens = input_tokens + cache_tokens + output_tokens;
 
             let ts_str = obj.get("timestamp").and_then(Value::as_str).unwrap_or("");
@@ -223,7 +229,10 @@ pub fn parse_rollout_file(path: &Path) -> Vec<PromptTurnRecord> {
             };
             last_session_total = session_total;
 
-            let raw_input = usage.get("input_tokens").and_then(Value::as_u64).unwrap_or(0);
+            let raw_input = usage
+                .get("input_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             let cached_in = usage
                 .get("cached_input_tokens")
                 .and_then(Value::as_u64)
@@ -234,7 +243,10 @@ pub fn parse_rollout_file(path: &Path) -> Vec<PromptTurnRecord> {
                 .unwrap_or(0);
             let cache_tokens = cached_in + cache_write;
             let input_tokens = raw_input.saturating_sub(cache_tokens);
-            let output_tokens = usage.get("output_tokens").and_then(Value::as_u64).unwrap_or(0);
+            let output_tokens = usage
+                .get("output_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             let step_total = input_tokens + cache_tokens + output_tokens;
 
             let ts_str = obj.get("timestamp").and_then(Value::as_str).unwrap_or("");
@@ -351,7 +363,10 @@ mod tests {
         assert_eq!(t.cache_tokens, 13056);
         assert_eq!(t.output_tokens, 220);
         assert_eq!(t.total_tokens, 17507);
-        assert_eq!(t.input_tokens + t.cache_tokens + t.output_tokens, t.total_tokens);
+        assert_eq!(
+            t.input_tokens + t.cache_tokens + t.output_tokens,
+            t.total_tokens
+        );
     }
 
     #[test]

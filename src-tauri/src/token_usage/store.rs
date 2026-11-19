@@ -153,7 +153,7 @@ pub fn aggregate_cache(cache: &DiskCache) -> TokenUsageResponse {
             }
 
             let mut models: Vec<ModelUsageStats> = by_model.into_values().collect();
-            models.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+            models.sort_by_key(|model| std::cmp::Reverse(model.total_tokens));
 
             daily_stats.push(DailyUsageStats {
                 date,
