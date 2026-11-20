@@ -1,9 +1,8 @@
 <div align="center">
 
-<h1>
-  <img src="docs/images/swarm-agent.png" alt="" width="52" height="52" align="center">
-  SwarmAgent
-</h1>
+<img src="docs/images/swarm-agent.png" alt="SwarmAgent logo" width="144" height="144">
+
+# SwarmAgent
 
 ### Desktop workspace for multi-agent coding
 
