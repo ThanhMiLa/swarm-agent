@@ -6,7 +6,7 @@
 
 ### Desktop workspace for multi-agent coding
 
-[![Version](https://img.shields.io/badge/version-0.0.2-22c55e)](https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2)
+[![Version](https://img.shields.io/badge/version-0.1.0-22c55e)](CHANGELOG.md#010---2026-11-20)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tauri/tauri-original.svg" width="20" height="20" alt="Tauri"> <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2">
@@ -34,6 +34,8 @@ has its own identity, so you can assign different work to `codex-1` and
 
 SwarmAgent sends each worker’s report back to the original leader as soon as
 it can receive it. Open **Runs** to see individual results and delivery status.
+Open **Settings → Run History** to see run counts and clear runs for one
+workspace or all open workspaces.
 
 ## Track token usage
 

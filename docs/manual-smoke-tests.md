@@ -72,6 +72,9 @@ workspace code. Start with `npm run tauri dev`.
 - [ ] Settings → Terminal: changing font / size / line height / ligatures
       updates the preview and every pane.
 - [ ] Settings → Keyboard Shortcuts lists the bindings for the current platform.
+- [ ] Settings → Run History: finish a run in each of two workspaces and start another. Verify the total and per-workspace counts.
+- [ ] Cancel **Clear** on one workspace and verify nothing changes. Confirm the same action and verify both its finished and active runs disappear from Settings and **Runs** without affecting the other workspace. Use **Clear all runs** to remove the remaining runs.
+- [ ] Clear a run with a queued task or result. Verify the queued prompt is not submitted and that any agent already working in a pane is not killed.
 - [ ] `⌘/Ctrl + B` toggles the sidebar; `Esc` closes Settings.
 - [ ] Restart the app → appearance and terminal preferences are remembered.
 

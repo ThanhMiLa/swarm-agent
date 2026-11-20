@@ -18,7 +18,7 @@ vi.mock('@/tauri/agent-team', () => ({
 }))
 
 const delivery = { id: 'task', terminalId: 'worker', generation: 42 }
-const snapshot = { revision: 1, teams: [], pending: [delivery], connected: {} }
+const snapshot = { revision: 1, teams: [], pending: [delivery], finishedRunCounts: {}, connected: {} }
 let stop: () => void
 
 beforeEach(() => {

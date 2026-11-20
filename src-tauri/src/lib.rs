@@ -120,6 +120,7 @@ pub fn run() {
             commands::resize_terminal,
             commands::kill_terminal,
             agent_team_commands::team_snapshot,
+            agent_team_commands::team_clear_runs,
             agent_team_commands::team_edit,
             agent_team_commands::team_delivery,
             commands::report_agent_state,

@@ -9,7 +9,7 @@ interface AgentTeamState {
 }
 
 export const useAgentTeamStore = create<AgentTeamState>((set) => ({
-  snapshot: { revision: -1, teams: [], pending: [], connected: {} },
+  snapshot: { revision: -1, teams: [], pending: [], finishedRunCounts: {}, connected: {} },
   holds: {},
   errors: {},
   setError: (workspaceId, error) => set((state) => {

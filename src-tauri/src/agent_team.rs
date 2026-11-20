@@ -325,6 +325,7 @@ pub struct Delivery {
 pub struct Snapshot {
     pub teams: Vec<Team>,
     pub pending: Vec<Delivery>,
+    pub finished_run_counts: HashMap<String, usize>,
     pub revision: u64,
 }
 
@@ -367,8 +368,31 @@ impl AgentTeams {
         Snapshot {
             teams: self.teams.clone(),
             pending,
+            finished_run_counts: self
+                .teams
+                .iter()
+                .map(|team| {
+                    let count = team.runs.iter().filter(|run| !run.active()).count();
+                    (team.id.clone(), count)
+                })
+                .collect(),
             revision: self.revision,
         }
+    }
+
+    pub fn clear_runs(&mut self, workspace_id: Option<&str>) -> usize {
+        let mut removed = 0;
+        for team in &mut self.teams {
+            if workspace_id.is_some_and(|id| id != team.id.as_str()) {
+                continue;
+            }
+            removed += team.runs.len();
+            team.runs = Vec::new();
+        }
+        if removed > 0 {
+            self.changed();
+        }
+        removed
     }
 
     fn changed(&mut self) {
@@ -847,14 +871,18 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
+            Self::in_workspace("workspace-a")
+        }
+
+        fn in_workspace(workspace_id: &str) -> Self {
             let mut state = AgentTeams::default();
-            let team = "workspace-a".to_owned();
+            let team = workspace_id.to_owned();
             let git = Checkout {
                 root: PathBuf::from("repo"),
                 branch: "main".into(),
             };
             let session = |name: &str| Session {
-                terminal_id: name.into(),
+                terminal_id: format!("{workspace_id}-{name}"),
                 generation: 1,
             };
             let origin = session("leader");
@@ -951,6 +979,87 @@ mod tests {
             .is_err());
         assert!(f.state.team_of(&f.origin).is_err());
         assert!(f.state.team_of(&session).is_ok());
+    }
+
+    #[test]
+    fn clear_all_removes_finished_and_active_runs_but_keeps_teams() {
+        let mut f = Fixture::new();
+        f.dispatch().unwrap();
+        let mut other = Fixture::in_workspace("workspace-b");
+        other.dispatch().unwrap();
+        other.state.leave(&other.origin);
+        other.state.expire(TASK_MS);
+        f.state.teams.append(&mut other.state.teams);
+
+        let before = f.state.snapshot();
+        assert_eq!(before.finished_run_counts[&f.team], 0);
+        assert_eq!(before.finished_run_counts[&other.team], 1);
+        assert_eq!(f.state.clear_runs(None), 2);
+        let after = f.state.snapshot();
+        assert!(after.revision > before.revision);
+        for (team, previous) in after.teams.iter().zip(&before.teams) {
+            assert!(team.runs.is_empty());
+            assert_eq!(team.members.len(), previous.members.len());
+            assert_eq!(after.finished_run_counts[&team.id], 0);
+        }
+        assert!(after.pending.is_empty());
+        assert_eq!(f.state.clear_runs(None), 0);
+        assert_eq!(f.state.snapshot().revision, after.revision);
+    }
+
+    #[test]
+    fn clearing_one_workspace_drops_its_pending_deliveries_and_leaves_other_runs() {
+        let mut f = Fixture::new();
+        let mut other = Fixture::in_workspace("workspace-b");
+        let run = f.dispatch().unwrap();
+        let other_run = other.dispatch().unwrap();
+        let [a, b] = run.task_ids.as_slice() else {
+            panic!("expected two tasks");
+        };
+        f.send(a);
+        f.state
+            .report(&f.workers[0].0, &run.run_id, a, report())
+            .unwrap();
+        let result_id = f.state.teams[0].runs[0].results[0].id.clone();
+        f.state.delivery(b, "paste", None, 0).unwrap();
+        f.state.teams.append(&mut other.state.teams);
+
+        assert_eq!(f.state.clear_runs(Some(&f.team)), 1);
+        let snapshot = f.state.snapshot();
+        assert!(snapshot.teams[0].runs.is_empty());
+        assert_eq!(snapshot.teams[1].runs[0].id, other_run.run_id);
+        assert_eq!(snapshot.pending.len(), 2);
+        assert!(snapshot
+            .pending
+            .iter()
+            .all(|delivery| other_run.task_ids.contains(&delivery.id)));
+        assert!(f.state.delivery(b, "submit", None, 0).is_err());
+        assert!(f.state.delivery(&result_id, "paste", None, 0).is_err());
+        assert!(f
+            .state
+            .report(&f.workers[1].0, &run.run_id, b, report())
+            .is_err());
+        assert_eq!(f.state.clear_runs(Some("closed-workspace")), 0);
+        assert_ne!(f.dispatch().unwrap().run_id, run.run_id);
+    }
+
+    #[test]
+    fn clearing_a_run_during_review_releases_its_sessions() {
+        let mut f = Fixture::new();
+        let run = f.dispatch().unwrap();
+        for (index, task_id) in run.task_ids.iter().enumerate() {
+            f.send(task_id);
+            f.state
+                .report(&f.workers[index].0, &run.run_id, task_id, report())
+                .unwrap();
+        }
+        while let Some(result) = f.state.snapshot().pending.pop() {
+            f.send(&result.id);
+        }
+        let snapshot = f.state.snapshot();
+        assert_eq!(snapshot.finished_run_counts[&f.team], 0);
+        assert_eq!(f.state.clear_runs(Some(&f.team)), 1);
+        assert_ne!(f.dispatch().unwrap().run_id, run.run_id);
     }
 
     #[test]

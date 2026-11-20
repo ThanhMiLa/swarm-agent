@@ -37,6 +37,23 @@ pub fn team_snapshot(state: State<'_, AppState>) -> TeamSnapshot {
     }
 }
 
+#[tauri::command]
+pub fn team_clear_runs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: Option<String>,
+) -> usize {
+    let removed = state
+        .agent_teams
+        .lock()
+        .unwrap()
+        .clear_runs(workspace_id.as_deref());
+    if removed > 0 {
+        agent_team::notify(&app);
+    }
+    removed
+}
+
 #[derive(Deserialize)]
 #[serde(
     tag = "kind",

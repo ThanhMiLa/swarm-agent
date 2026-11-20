@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react'
-import { BarChart3, Bell, ChevronDown, ChevronRight, Keyboard, Palette, Terminal, X } from 'lucide-react'
+import { BarChart3, Bell, ChevronDown, ChevronRight, History, Keyboard, Palette, Terminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -8,6 +8,7 @@ import { TerminalPanel } from './TerminalPanel'
 import { NotificationsPanel } from './NotificationsPanel'
 import { KeyboardShortcutsPanel } from './KeyboardShortcutsPanel'
 import { TokenUsagePanel } from './TokenUsagePanel'
+import { RunHistoryPanel } from './RunHistoryPanel'
 
 export type CategoryId =
   | 'appearance'
@@ -15,6 +16,7 @@ export type CategoryId =
   | 'notifications'
   | 'shortcuts'
   | 'token-usage'
+  | 'run-history'
 
 interface Category {
   id: CategoryId
@@ -28,6 +30,7 @@ const CATEGORIES: Category[] = [
   { id: 'notifications', label: 'Notifications', Icon: Bell },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', Icon: Keyboard },
   { id: 'token-usage', label: 'Token Usage', Icon: BarChart3 },
+  { id: 'run-history', label: 'Run History', Icon: History },
 ]
 
 interface SettingsViewProps {
@@ -203,6 +206,7 @@ export function SettingsView({ onClose, initialCategory }: SettingsViewProps): R
               {activeCategory === 'token-usage' && (
                 <TokenUsagePanel selectedWorkspace={selectedWorkspace} />
               )}
+              {activeCategory === 'run-history' && <RunHistoryPanel workspaces={workspaces} />}
             </div>
           </div>
         </div>

@@ -50,6 +50,7 @@ export interface TeamSnapshot {
   revision: number
   teams: Team[]
   pending: Delivery[]
+  finishedRunCounts: Record<string, number>
   connected: Record<string, boolean>
 }
 
@@ -60,6 +61,8 @@ type Edit =
   | { kind: 'renameMember'; teamId: string; memberId: string; name: string }
 
 export const teamSnapshot = (): Promise<TeamSnapshot> => invoke('team_snapshot')
+export const clearTeamRuns = (workspaceId?: string): Promise<number> =>
+  invoke('team_clear_runs', { workspaceId: workspaceId ?? null })
 export const editTeam = (edit: Edit): Promise<void> => invoke('team_edit', { edit })
 export const onTeamChanged = (refresh: () => void) => listen('agent-team:changed', refresh)
 

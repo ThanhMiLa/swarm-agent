@@ -57,6 +57,8 @@ For a quick connection test, ask `[TEAM] Use Agent Team MCP to send "hello" to "
 
 Workers edit the shared checkout and call `team_report_result` with a brief summary, paths and test outcomes. As each task finishes, SwarmAgent queues a separate prompt for the original leader to review. If the leader is busy, the results are sent in order when its composer is ready. **Runs** shows each task’s report and delivery status. A task that has not reported after ten minutes is marked timed out, and the interactive CLI stays open. If the leader has closed, read the available results under **Runs**.
 
+**Settings → Run History** shows the total and finished Agent Team runs across all open workspaces, with a breakdown by workspace. Use **Clear** on a row to remove all runs for that workspace, or **Clear all runs** to remove them across every open workspace. Both actions ask for confirmation, remove active runs too, and cancel their queued tasks and result deliveries. They do not interrupt a terminal write already in progress, stop work already sent to a CLI, undo changes, or clear agent chat history. If a prompt was pasted but not submitted when you cleared its run, discard the leftover draft in that pane.
+
 ## Status line in Claude Code panes
 
 Every Claude Code pane gets a one-line readout under its prompt:

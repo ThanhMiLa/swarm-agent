@@ -5,6 +5,18 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-11-20
+
+### Added
+
+- **Settings → Run History** shows total, finished, and active Agent Team runs across all open workspaces, with total and finished counts for each workspace.
+- **Clear** on a workspace row removes only that workspace's runs. **Clear all runs** removes runs across all open workspaces. Both actions ask for confirmation and include unfinished runs; history is not automatically pruned.
+- Clearing active runs cancels queued task handoffs and result delivery. Agents that already received work can keep running. Team membership, agent chat history, and project files are not cleared.
+
+### Changed
+
+- Updated the README with the multi-agent coding workspace description, an Agent Team demo and quick start, and an overview of Token Usage.
+
 ## [0.0.2] - 2026-11-20
 
 ### Added
@@ -49,5 +61,6 @@ Initial release of **SwarmAgent** — one workspace for your coding agents.
 
 - **macOS (Apple Silicon / `aarch64`)**: `SwarmAgent_0.0.1_aarch64.dmg` (unsigned / ad-hoc signed local build)
 
+[0.1.0]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.1
