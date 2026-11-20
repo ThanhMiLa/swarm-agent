@@ -1,6 +1,6 @@
 [package]
 name = "swarm-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop terminals and cross-CLI coordination for AI coding agents"
 authors = ["ThanhMiLa"]
 license = "GPL-3.0-only"
@@ -70,4 +70,3 @@ windows-sys = { version = "0.59", features = [
 
 [dev-dependencies]
 tempfile = "3"
-

@@ -4,6 +4,8 @@ mod commands;
 mod input_compatibility;
 mod json_style;
 mod links;
+#[cfg(target_os = "macos")]
+mod macos_restart_cleanup;
 pub mod mcp;
 mod pty;
 mod pty_output;
@@ -50,6 +52,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            macos_restart_cleanup::start();
             input_compatibility::setup(app.handle());
             // The configured 1280×820 overflows small displays (on a MacBook
             // the Dock covers the bottom edge), so clamp the window to the

@@ -81,6 +81,11 @@ exist. The `.dmg` is for new installs from the Releases page; the tarball is
 what installed apps download when they update. Uploading everything to the
 release is `npm run release:publish` ([release-process.md](release-process.md)).
 
+For a local install, quit SwarmAgent when its terminal work is done, replace
+the `.app`, and open it once. Do not schedule the reopen with `launchctl submit`:
+launchd can keep rerunning the job even after it exits successfully, bringing
+SwarmAgent to the foreground each time.
+
 Run the smoke pass first after any change to the bundle configuration: it
 proves the app still runs under hardened runtime without waiting on Apple's
 notarization queue.

@@ -6,7 +6,7 @@
 
 ### Desktop workspace for multi-agent coding
 
-[![Version](https://img.shields.io/badge/version-0.1.0-22c55e)](CHANGELOG.md#010---2026-11-20)
+[![Version](https://img.shields.io/badge/version-0.1.1-22c55e)](CHANGELOG.md#011---2026-11-20)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tauri/tauri-original.svg" width="20" height="20" alt="Tauri"> <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2">
@@ -47,8 +47,8 @@ and use the daily breakdown to see how usage changes over time.
 
 ## Get started
 
-Download the [macOS Apple Silicon DMG](https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2)
-from GitHub Releases. The v0.0.2 build is ad-hoc signed and installed manually.
+Download the [macOS Apple Silicon DMG](https://github.com/ThanhMiLa/swarm-agent/releases/latest)
+from GitHub Releases. The build is ad-hoc signed and installed manually.
 Install the agent CLIs you want to use so they’re available in the workspace
 composer.
 
