@@ -2,14 +2,19 @@ import { create } from 'zustand'
 import {
   DEFAULT_STYLE,
   applyStyleToDom,
+  readStoredItermRenderer,
   readStoredStyle,
+  storeItermRenderer,
   storeStyle,
+  type ItermRenderer,
   type Style
 } from '@/lib/appearance'
 
 export interface AppearanceStore {
   style: Style
+  itermRenderer: ItermRenderer
   setStyle: (style: Style) => void
+  setItermRenderer: (renderer: ItermRenderer) => void
 }
 
 /**
@@ -27,6 +32,11 @@ export const useAppearanceStore = create<AppearanceStore>((set) => {
 
   return {
     style: initial,
+    itermRenderer: typeof window === 'undefined' ? 'webgl' : readStoredItermRenderer(window.localStorage),
+    setItermRenderer: (itermRenderer) => {
+      if (typeof window !== 'undefined') storeItermRenderer(window.localStorage, itermRenderer)
+      set({ itermRenderer })
+    },
     setStyle: (style) => {
       if (typeof window !== 'undefined') {
         storeStyle(window.localStorage, style)

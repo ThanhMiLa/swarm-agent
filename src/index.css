@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  :root,
+  [data-style='vscode-dark'] {
     --background: 0 0% 12%;
     --canvas: 0 0% 7%;
     --foreground: 0 0% 80%;
@@ -67,6 +68,31 @@
     --ring: 221 100% 71.8%;      /* #6f9cff: Deck accent */
     --activity: 39 67.1% 69%;    /* #e5c07b: Deck yellow */
     --radius: 0.5rem;
+  }
+
+  [data-style='iterm2-dark'] {
+    --background: 0 0% 5.1%;     /* #0d0d0d: terminal background */
+    --canvas: 0 0% 5.1%;
+    --foreground: 0 0% 87.8%;   /* #e0e0e0: terminal foreground */
+    --card: 0 0% 8.6%;
+    --card-foreground: 0 0% 87.8%;
+    --popover: 0 0% 14.1%;
+    --popover-foreground: 0 0% 87.8%;
+    --primary: 36 100% 57.6%;   /* #ffa827: terminal cursor */
+    --primary-foreground: 0 0% 5.1%;
+    --secondary: 0 0% 11.8%;
+    --secondary-foreground: 0 0% 87.8%;
+    --muted: 0 0% 11.8%;
+    --muted-foreground: 0 0% 66%;
+    --accent: 0 0% 17.6%;
+    --accent-foreground: 0 0% 87.8%;
+    --destructive: 340 95% 57%; /* terminal ANSI red */
+    --destructive-foreground: 0 0% 5.1%;
+    --border: 0 0% 17.6%;
+    --pane-border: 0 0% 26.7%;
+    --input: 0 0% 12.5%;
+    --ring: 36 100% 57.6%;
+    --activity: 54 69.5% 67.8%;
   }
 }
 

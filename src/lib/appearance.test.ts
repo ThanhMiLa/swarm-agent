@@ -2,10 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   APPEARANCE_STORAGE_KEY,
   DEFAULT_STYLE,
+  ITERM_RENDERER_STORAGE_KEY,
   KNOWN_STYLES,
   applyStyleToDom,
+  readStoredItermRenderer,
   readStoredStyle,
   storeStyle,
+  storeItermRenderer,
   type AppearanceStorage
 } from './appearance'
 
@@ -27,9 +30,8 @@ describe('DEFAULT_STYLE', () => {
 })
 
 describe('KNOWN_STYLES', () => {
-  it('contains vscode-dark and terminal-black', () => {
-    expect(KNOWN_STYLES).toContain('vscode-dark')
-    expect(KNOWN_STYLES).toContain('terminal-black')
+  it('includes the built-in themes', () => {
+    expect(KNOWN_STYLES).toEqual(['vscode-dark', 'terminal-black', 'iterm2-dark'])
   })
 })
 
@@ -66,6 +68,28 @@ describe('storeStyle', () => {
     expect(storage.getItem(APPEARANCE_STORAGE_KEY)).toBe('vscode-dark')
     storeStyle(storage, 'terminal-black')
     expect(storage.getItem(APPEARANCE_STORAGE_KEY)).toBe('terminal-black')
+  })
+
+  it('round-trips the iTerm2 style', () => {
+    const storage = fakeStorage()
+    storeStyle(storage, 'iterm2-dark')
+    expect(readStoredStyle(storage)).toBe('iterm2-dark')
+  })
+})
+
+describe('iTerm2 renderer preference', () => {
+  it('defaults to WebGL for new or invalid values', () => {
+    expect(readStoredItermRenderer(fakeStorage())).toBe('webgl')
+    expect(readStoredItermRenderer(fakeStorage({ [ITERM_RENDERER_STORAGE_KEY]: 'invalid' }))).toBe('webgl')
+  })
+
+  it('persists a DOM selection independently of the theme', () => {
+    const storage = fakeStorage()
+    storeItermRenderer(storage, 'dom')
+    storeStyle(storage, 'terminal-black')
+    expect(readStoredItermRenderer(storage)).toBe('dom')
+    storeItermRenderer(storage, 'webgl')
+    expect(readStoredItermRenderer(storage)).toBe('webgl')
   })
 })
 

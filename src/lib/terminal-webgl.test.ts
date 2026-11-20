@@ -235,4 +235,47 @@ describe('TerminalWebglManager lifecycle and retry logic', () => {
     manager.dispose()
   })
 
+  it('starts in DOM, switches to WebGL on request and releases the addon when switched back', () => {
+    const addon = createMockAddon()
+    const createAddon = vi.fn(() => addon)
+    const manager = new TerminalWebglManager({ id: 'dom', term: mockTerm, host: mockHost, createAddon, enabled: false })
+    manager.load()
+    manager.onVisibleOrAttached()
+    expect(createAddon).not.toHaveBeenCalled()
+    expect(manager.getStatus()).toBe('disabled')
+
+    expect(manager.setEnabled(true)).toBe(true)
+    expect(manager.getStatus()).toBe('active')
+    expect(manager.setEnabled(true)).toBe(false)
+    expect(createAddon).toHaveBeenCalledOnce()
+
+    expect(manager.setEnabled(false)).toBe(true)
+    expect(manager.getStatus()).toBe('disabled')
+    expect(addon.dispose).toHaveBeenCalledOnce()
+    contextLossCb!()
+    expect(manager.getStatus()).toBe('disabled')
+  })
+
+  it('cancels retries in DOM mode and defers WebGL on a detached pane until reattachment', () => {
+    const createAddon = vi.fn(createMockAddon)
+    const manager = new TerminalWebglManager({ id: 'dom', term: mockTerm, host: mockHost, createAddon })
+    loadAddonThrow = true
+    manager.load()
+    manager.setEnabled(false)
+    vi.advanceTimersByTime(60_000)
+    expect(manager.getStatus()).toBe('disabled')
+    expect(createAddon).toHaveBeenCalledOnce()
+
+    mockHost.isConnected = false
+    loadAddonThrow = false
+    manager.setEnabled(true)
+    expect(manager.getStatus()).toBe('uninitialized')
+    expect(createAddon).toHaveBeenCalledOnce()
+    mockHost.isConnected = true
+    manager.onVisibleOrAttached()
+    expect(manager.getStatus()).toBe('active')
+    expect(createAddon).toHaveBeenCalledTimes(2)
+    manager.dispose()
+  })
+
 })

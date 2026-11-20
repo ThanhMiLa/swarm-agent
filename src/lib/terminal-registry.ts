@@ -19,7 +19,8 @@ import { TerminalWebglManager } from '@/lib/terminal-webgl'
 import { useTerminalScrollingStore } from '@/store/terminal-scrolling-store'
 import { effectiveScrollOptions, type TerminalScrollingPref } from '@/lib/terminal-scrolling'
 import { useAppearanceStore } from '@/store/appearance-store'
-import type { Style } from '@/lib/appearance'
+import type { ItermRenderer, Style } from '@/lib/appearance'
+import { ITERM2_DARK_THEME, ITERM2_RENDERING } from '@/lib/iterm2-preset'
 import { useTerminalTextStore } from '@/store/terminal-text-store'
 import { useTerminalTitleStore } from '@/store/terminal-title-store'
 import { useAppStore, selectFocusedTerminalId } from '@/store/app-store'
@@ -134,10 +135,29 @@ export function getTerminalTheme(style: Style): ITheme {
   switch (style) {
     case 'terminal-black':
       return TERMINAL_BLACK_THEME
+    case 'iterm2-dark':
+      return ITERM2_DARK_THEME
     case 'vscode-dark':
     default:
       return VSCODE_DARK_THEME
   }
+}
+
+function terminalStyleOptions(style: Style) {
+  const isIterm = style === 'iterm2-dark'
+  return {
+    theme: getTerminalTheme(style),
+    cursorBlink: !isIterm,
+    ...(isIterm ? ITERM2_RENDERING : {
+      fontWeight: 'normal' as const,
+      fontWeightBold: 'bold' as const,
+      minimumContrastRatio: 1
+    })
+  }
+}
+
+function prefersWebgl(style: Style, renderer: ItermRenderer): boolean {
+  return style !== 'iterm2-dark' || renderer === 'webgl'
 }
 
 /** CSS font-feature-settings value enabling programming ligatures, or off. */
@@ -377,12 +397,12 @@ function getOrCreate(id: string): Entry {
   // the pane edges — only the rows are pushed inward. box-sizing keeps the host
   // filling the container despite the padding. The FitAddon reads the host's
   // content-box size, so cols/rows already exclude this padding.
-  const style = useAppearanceStore.getState().style
-  const theme = getTerminalTheme(style)
+  const { style, itermRenderer } = useAppearanceStore.getState()
+  const styleOptions = terminalStyleOptions(style)
 
   host.style.boxSizing = 'border-box'
   host.style.padding = '6px 8px'
-  host.style.background = theme.background as string
+  host.style.background = styleOptions.theme.background as string
 
   const text = useTerminalTextStore.getState().text
   host.style.fontFeatureSettings = ligatureFeatureSettings(text.ligatures)
@@ -396,7 +416,6 @@ function getOrCreate(id: string): Entry {
     // SearchAddon throws inside findNext and the search silently finds
     // nothing (the regex guard in terminalSearchNext would swallow it).
     allowProposedApi: true,
-    cursorBlink: true,
     fontFamily: text.fontFamily,
     fontSize: text.fontSize,
     lineHeight: text.lineHeight,
@@ -404,7 +423,7 @@ function getOrCreate(id: string): Entry {
     scrollSensitivity: scrollOpts.scrollSensitivity,
     smoothScrollDuration: scrollOpts.smoothScrollDuration,
     enhancedWheel: scrollOpts.enhancedWheel,
-    theme
+    ...styleOptions
   })
   const fit = new FitAddon()
   term.loadAddon(fit)
@@ -927,6 +946,7 @@ function getOrCreate(id: string): Entry {
     id,
     term,
     host,
+    enabled: prefersWebgl(style, itermRenderer),
     onRefitNeeded: () => {
       const e = entries.get(id)
       if (e) refitEntry(id, e)
@@ -1367,15 +1387,21 @@ useTerminalTextStore.subscribe((state) => applyTerminalText(state.text))
  * Push the visual style/theme onto every live terminal.
  */
 export function applyTerminalStyle(style: Style): void {
-  const theme = getTerminalTheme(style)
+  const options = terminalStyleOptions(style)
   for (const [, entry] of entries) {
-    entry.term.options.theme = theme
-    entry.host.style.background = theme.background as string
+    entry.term.options = options
+    entry.host.style.background = options.theme.background as string
   }
 }
 
-// Push style changes to every live terminal.
-useAppearanceStore.subscribe((state) => applyTerminalStyle(state.style))
+useAppearanceStore.subscribe((state, previous) => {
+  if (state.style !== previous.style) applyTerminalStyle(state.style)
+  const enabled = prefersWebgl(state.style, state.itermRenderer)
+  if (enabled === prefersWebgl(previous.style, previous.itermRenderer)) return
+  for (const [id, entry] of entries) {
+    if (entry.webglManager.setEnabled(enabled) && entry.opened && entry.observer) refitEntry(id, entry)
+  }
+})
 
 /**
  * Push scrolling preferences onto every live terminal.

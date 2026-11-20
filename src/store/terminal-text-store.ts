@@ -14,6 +14,7 @@ export interface TerminalTextStore {
   setFontSize: (px: number) => void
   setLineHeight: (mult: number) => void
   setLigatures: (on: boolean) => void
+  applyTypography: (pref: Pick<TerminalTextPref, 'fontFamily' | 'fontSize' | 'lineHeight'>) => void
   reset: () => void
 }
 
@@ -41,6 +42,8 @@ export const useTerminalTextStore = create<TerminalTextStore>((set, get) => {
     setFontSize: (px) => update({ fontSize: clampFontSize(px) }),
     setLineHeight: (mult) => update({ lineHeight: clampLineHeight(mult) }),
     setLigatures: (on) => update({ ligatures: on }),
+    applyTypography: ({ fontFamily, fontSize, lineHeight }) =>
+      update({ fontFamily, fontSize: clampFontSize(fontSize), lineHeight: clampLineHeight(lineHeight) }),
     reset: () => update({ ...DEFAULT_TERMINAL_TEXT })
   }
 })

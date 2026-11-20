@@ -1,8 +1,11 @@
 import { type ReactElement } from 'react'
 import { Check } from 'lucide-react'
 import { useAppearanceStore } from '@/store/appearance-store'
-import type { Style } from '@/lib/appearance'
+import { useTerminalTextStore } from '@/store/terminal-text-store'
+import type { ItermRenderer, Style } from '@/lib/appearance'
+import { ITERM2_DARK_THEME, ITERM2_TEXT_PRESET } from '@/lib/iterm2-preset'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface StyleOption {
   id: Style
@@ -13,13 +16,21 @@ interface StyleOption {
 
 const STYLE_OPTIONS: StyleOption[] = [
   { id: 'vscode-dark', label: 'VS Code Dark', variant: 'Dark', surface: 'Modern' },
-  { id: 'terminal-black', label: 'Deck Dark', variant: 'Dark', surface: 'SpaceVibe' }
+  { id: 'terminal-black', label: 'Deck Dark', variant: 'Dark', surface: 'SpaceVibe' },
+  { id: 'iterm2-dark', label: 'iTerm2 Dark', variant: 'Dark', surface: 'Profile preset' }
 ]
 
-/** The "Appearance" settings category — currently a single Style picker. */
 export function AppearancePanel(): ReactElement {
   const style = useAppearanceStore((s) => s.style)
   const setStyle = useAppearanceStore((s) => s.setStyle)
+  const itermRenderer = useAppearanceStore((s) => s.itermRenderer)
+  const setItermRenderer = useAppearanceStore((s) => s.setItermRenderer)
+  const text = useTerminalTextStore((s) => s.text)
+  const applyTypography = useTerminalTextStore((s) => s.applyTypography)
+  const usesProfileFont =
+    text.fontFamily === ITERM2_TEXT_PRESET.fontFamily &&
+    text.fontSize === ITERM2_TEXT_PRESET.fontSize &&
+    text.lineHeight === ITERM2_TEXT_PRESET.lineHeight
 
   return (
     <div className="space-y-8">
@@ -46,6 +57,43 @@ export function AppearancePanel(): ReactElement {
             />
           ))}
         </div>
+        {style === 'iterm2-dark' && (
+          <div className="mt-4 divide-y divide-border rounded-md border border-border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+              <p className="text-xs text-muted-foreground">
+                Profile font: JetBrainsMono Nerd Font Mono, 14 px. You can change it under Terminal → Text.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={usesProfileFont}
+                onClick={() => applyTypography(ITERM2_TEXT_PRESET)}
+              >
+                {usesProfileFont ? 'Profile font applied' : 'Use profile font'}
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+              <div>
+                <label htmlFor="iterm-renderer" className="text-sm font-medium text-foreground">
+                  Text renderer
+                </label>
+                <p id="iterm-renderer-help" className="mt-1 text-xs text-muted-foreground">
+                  Compare how text looks without restarting your terminals. WebGL uses DOM if unavailable.
+                </p>
+              </div>
+              <select
+                id="iterm-renderer"
+                aria-describedby="iterm-renderer-help"
+                value={itermRenderer}
+                onChange={(event) => setItermRenderer(event.target.value as ItermRenderer)}
+                className="rounded-md border border-pane-border bg-card px-2.5 py-1.5 text-sm text-foreground"
+              >
+                <option value="webgl">WebGL (default)</option>
+                <option value="dom">DOM (browser text)</option>
+              </select>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
@@ -100,9 +148,11 @@ function TerminalPreview({
   styleId: Style
 }): ReactElement {
   const isBlack = styleId === 'terminal-black'
+  const iterm = styleId === 'iterm2-dark' ? ITERM2_DARK_THEME : undefined
 
   return (
     <div
+      data-style={styleId}
       className={cn(
         'overflow-hidden rounded-md border',
         isBlack ? 'border-[#272727] bg-[#0a0a0a]' : 'border-border bg-canvas'
@@ -124,16 +174,22 @@ function TerminalPreview({
           'flex flex-col gap-1 px-3 py-3 font-mono text-[10px] leading-tight',
           isBlack ? 'bg-[#0a0a0a] text-[#e7e7e7]' : ''
         )}
+        style={iterm && { backgroundColor: iterm.background, color: iterm.foreground }}
       >
         <div>
           <span className="text-muted-foreground/60">$</span>
-          <span className={cn('ml-1.5', isBlack ? 'text-white' : 'text-foreground/85')}>swarm-agent</span>
+          <span
+            className={cn('ml-1.5', isBlack ? 'text-white' : 'text-foreground/85')}
+            style={iterm && { color: iterm.green }}
+          >
+            swarm-agent
+          </span>
         </div>
         <div className="text-muted-foreground">
           <span className={cn(isBlack ? 'text-white/80' : 'text-foreground/70')}>●</span> session ready
         </div>
         <div className="text-muted-foreground">
-          <span className="text-muted-foreground/70">→</span> 3 panes active
+          <span className="text-muted-foreground/70" style={iterm && { color: iterm.cyan }}>→</span> 3 panes active
         </div>
         <div className="flex items-center pt-0.5">
           <span className="text-muted-foreground/60">$</span>
@@ -141,8 +197,9 @@ function TerminalPreview({
             className={cn(
               'ml-1.5 inline-block h-2.5 w-1.5',
               isBlack ? 'bg-white' : 'bg-foreground/80',
-              active && 'animate-pulse'
+              active && !iterm && 'animate-pulse'
             )}
+            style={iterm && { backgroundColor: iterm.cursor }}
             aria-hidden
           />
         </div>

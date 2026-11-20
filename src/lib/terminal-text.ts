@@ -33,6 +33,8 @@ export interface MonoFont {
 export const SYSTEM_FONT_STACK =
   '"Cascadia Mono", "Consolas", "JetBrains Mono", monospace'
 
+export const JETBRAINS_NERD_FONT_STACK = '"JetBrainsMono Nerd Font Mono", monospace'
+
 const SF_MONO_FAMILIES = '"SF Mono", "SFMono-Regular"'
 
 /** Curated cross-platform monospace fonts. Order = display order. */
@@ -43,7 +45,7 @@ export const MONO_FONTS: readonly MonoFont[] = [
   { id: 'consolas', label: 'Consolas', platform: 'Windows', stack: '"Consolas", monospace', ligatures: false },
   { id: 'jetbrains-mono', label: 'JetBrains Mono', platform: 'Cross-platform', stack: '"JetBrains Mono", monospace', ligatures: true },
   { id: 'fira-code', label: 'Fira Code', platform: 'Cross-platform', stack: '"Fira Code", monospace', ligatures: true },
-  { id: 'jetbrains-nerd', label: 'JetBrainsMono Nerd Font Mono', platform: 'Cross-platform', stack: '"JetBrainsMono Nerd Font Mono", monospace', ligatures: true },
+  { id: 'jetbrains-nerd', label: 'JetBrainsMono Nerd Font Mono', platform: 'Cross-platform', stack: JETBRAINS_NERD_FONT_STACK, ligatures: true },
   { id: 'fira-nerd', label: 'FiraCode Nerd Font Mono', platform: 'Cross-platform', stack: '"FiraCode Nerd Font Mono", monospace', ligatures: true },
   { id: 'sf-mono', label: 'SF Mono', platform: 'macOS', stack: `${SF_MONO_FAMILIES}, Menlo, monospace`, probeStack: SF_MONO_FAMILIES, ligatures: false },
   { id: 'menlo', label: 'Menlo', platform: 'macOS', stack: 'Menlo, monospace', ligatures: false },

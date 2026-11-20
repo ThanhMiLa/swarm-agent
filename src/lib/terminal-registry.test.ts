@@ -1,16 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ fit: vi.fn(), terminals: [] as any[] }))
+const mocks = vi.hoisted(() => ({
+  fit: vi.fn(),
+  activateWebgl: vi.fn(),
+  disposeWebgl: vi.fn(),
+  terminals: [] as any[]
+}))
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
-    constructor() { mocks.terminals.push(this) }
+    constructor(options: Record<string, unknown>) {
+      this.terminalOptions = { ...options }
+      mocks.terminals.push(this)
+    }
     dataListeners: ((data: string) => void)[] = []
     binaryListeners: ((data: string) => void)[] = []
     wheelHandler?: (event: any) => boolean
     cols = 80
     rows = 24
-    options = {}
+    private terminalOptions: Record<string, unknown>
+    get options() { return this.terminalOptions }
+    set options(options: Record<string, unknown>) { Object.assign(this.terminalOptions, options) }
     parser = { registerOscHandler: vi.fn() }
     buffer = { active: { type: 'normal', baseY: 0 }, onBufferChange: vi.fn() }
     loadAddon(addon: { activate?: (term: unknown) => void }): void { addon.activate?.(this) }
@@ -36,7 +46,13 @@ vi.mock('@xterm/addon-fit', () => ({
   }
 }))
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }))
-vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss = vi.fn(); dispose = vi.fn() } }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    activate = mocks.activateWebgl
+    onContextLoss = vi.fn()
+    dispose = mocks.disposeWebgl
+  }
+}))
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }))
 vi.mock('@/tauri/terminal', () => ({
   createTerminal: vi.fn().mockResolvedValue({ ok: true }),
@@ -47,17 +63,22 @@ vi.mock('@/tauri/terminal', () => ({
   ackTerminalOutput: vi.fn().mockResolvedValue(undefined)
 }))
 
-import { resizeTerminal, writeTerminal, writeTerminalBytes } from '@/tauri/terminal'
+import { createTerminal, killTerminal, resizeTerminal, writeTerminal, writeTerminalBytes } from '@/tauri/terminal'
+import { ITERM2_DARK_THEME, ITERM2_TEXT_PRESET } from './iterm2-preset'
+import { useAppearanceStore } from '@/store/appearance-store'
+import { useTerminalTextStore } from '@/store/terminal-text-store'
 import { useTerminalTypingStore } from '@/store/terminal-typing-store'
 import { useTerminalScrollingStore } from '@/store/terminal-scrolling-store'
 import {
+  applyTerminalStyle,
   attachTerminal,
   beginLayoutTransition,
   detachTerminal,
   disposeOrphanTerminals,
   disposeTerminal,
   endLayoutTransition,
-  refitAttachedTerminals
+  refitAttachedTerminals,
+  VSCODE_DARK_THEME
 } from './terminal-registry'
 
 const frames = new Map<number, FrameRequestCallback>()
@@ -77,6 +98,7 @@ function attach(id = 'one'): void {
 beforeEach(() => {
   vi.useFakeTimers()
   frames.clear()
+  mocks.terminals.length = 0
   observers = []
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
     frames.set(++nextFrame, fn)
@@ -85,8 +107,9 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id))
   vi.stubGlobal('document', {
     visibilityState: 'visible',
+    documentElement: { setAttribute: vi.fn() },
     createElement: () => ({
-      style: {}, clientWidth: 800, clientHeight: 600,
+      style: {}, isConnected: true, clientWidth: 800, clientHeight: 600,
       addEventListener: vi.fn(), remove: vi.fn()
     })
   })
@@ -105,6 +128,87 @@ afterEach(() => {
   frame()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+describe('iTerm2 appearance', () => {
+  it('applies the richer rendering to both live and new terminals without changing text prefs', () => {
+    const term = mocks.terminals[0]
+    const { style, setStyle } = useAppearanceStore.getState()
+    const text = useTerminalTextStore.getState().text
+    try {
+      setStyle('iterm2-dark')
+      attach('two')
+
+      for (const entry of mocks.terminals) {
+        expect(entry.options).toMatchObject({
+          theme: ITERM2_DARK_THEME,
+          cursorBlink: false,
+          fontWeight: 800,
+          fontWeightBold: 1000,
+          minimumContrastRatio: 4,
+          fontFamily: text.fontFamily,
+          fontSize: text.fontSize,
+          lineHeight: text.lineHeight
+        })
+      }
+
+      applyTerminalStyle('vscode-dark')
+      expect(term.options).toMatchObject({
+        theme: VSCODE_DARK_THEME,
+        cursorBlink: true,
+        fontWeight: 'normal',
+        fontWeightBold: 'bold',
+        minimumContrastRatio: 1
+      })
+    } finally {
+      setStyle(style)
+    }
+  })
+
+  it('applies the profile typography to live terminals in one refit without changing ligatures', () => {
+    const store = useTerminalTextStore.getState()
+    store.setLigatures(true)
+    mocks.fit.mockClear()
+    try {
+      store.applyTypography(ITERM2_TEXT_PRESET)
+      expect(mocks.terminals[0].options).toMatchObject(ITERM2_TEXT_PRESET)
+      expect(useTerminalTextStore.getState().text.ligatures).toBe(true)
+      expect(mocks.fit).toHaveBeenCalledTimes(1)
+    } finally {
+      store.reset()
+    }
+  })
+
+  it('switches existing panes to DOM only for iTerm2 Dark without restarting them', () => {
+    const { style, itermRenderer, setStyle, setItermRenderer } = useAppearanceStore.getState()
+    const existing = mocks.terminals[0]
+    try {
+      setItermRenderer('dom')
+      expect(mocks.disposeWebgl).not.toHaveBeenCalled()
+
+      setStyle('iterm2-dark')
+      expect(mocks.disposeWebgl).toHaveBeenCalledOnce()
+      attach('two') // starts in DOM without briefly creating a GPU renderer
+      expect(mocks.activateWebgl).not.toHaveBeenCalled()
+
+      const createCount = vi.mocked(createTerminal).mock.calls.length
+      setItermRenderer('webgl')
+      expect(mocks.activateWebgl.mock.calls.map(([term]) => term)).toEqual(mocks.terminals)
+      setItermRenderer('dom')
+      expect(mocks.disposeWebgl).toHaveBeenCalledTimes(3)
+      mocks.activateWebgl.mockClear()
+
+      setStyle('vscode-dark')
+      expect(mocks.activateWebgl.mock.calls.map(([term]) => term)).toEqual(mocks.terminals)
+      expect(mocks.terminals[0]).toBe(existing)
+      expect(existing.dispose).not.toHaveBeenCalled()
+      expect(createTerminal).toHaveBeenCalledTimes(createCount)
+      expect(killTerminal).not.toHaveBeenCalled()
+    } finally {
+      setItermRenderer(itermRenderer)
+      setStyle(style)
+    }
+  })
 })
 
 describe('terminal layout refits', () => {

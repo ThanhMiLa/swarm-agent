@@ -73,6 +73,19 @@ workspace code. Start with `npm run tauri dev`.
 
 ## Settings
 
+- [ ] Settings → Appearance: select **iTerm2 Dark**. Verify open and new panes use
+      the dark palette and orange, steady cursor; switch back to restore the previous theme.
+- [ ] With the same terminal font and size, switch in and out of **iTerm2 Dark**.
+      Check that normal glyphs look slightly heavier and dark text is easier
+      to read, including low-contrast truecolor text.
+- [ ] Run `sh scripts/terminal-render-sample.sh` from the repository in iTerm2
+      and in SwarmAgent. On the same display, compare regular/bold and ANSI/RGB
+      rows as you switch **Appearance → iTerm2 Dark → Text renderer** between
+      WebGL and DOM. Existing pane contents must survive both switches.
+- [ ] Restart after choosing DOM, then switch to another theme. The saved choice
+      should apply to **iTerm2 Dark** only; other themes still prefer WebGL.
+- [ ] In **iTerm2 Dark**, **Use profile font** applies JetBrainsMono Nerd Font Mono
+      at 14 px if installed (otherwise uses a fallback). Switching themes alone keeps the font setting.
 - [ ] Settings → Terminal: changing font / size / line height / ligatures
       updates the preview and every pane.
 - [ ] Settings → Keyboard Shortcuts lists the bindings for the current platform.

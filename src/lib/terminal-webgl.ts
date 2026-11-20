@@ -5,6 +5,7 @@
  * - uninitialized: addon has not been created yet
  * - initializing: addon is being instantiated and loaded
  * - active: WebGL rendering is running successfully on GPU
+ * - disabled: DOM renderer explicitly selected, no WebGL retries
  * - fallback: WebGL context lost or unavailable; fallen back to DOM renderer
  * - recovering: attempting recovery back to WebGL
  * - disposed: terminal permanently torn down
@@ -24,6 +25,7 @@ export type WebglStatus =
   | 'uninitialized'
   | 'initializing'
   | 'active'
+  | 'disabled'
   | 'fallback'
   | 'recovering'
   | 'disposed'
@@ -32,6 +34,7 @@ export interface WebglManagerOptions {
   id: string
   term: Terminal
   host: HTMLElement
+  enabled?: boolean
   onRefitNeeded?: () => void
   isPaneVisible?: () => boolean
   createAddon?: () => WebglAddon
@@ -47,7 +50,26 @@ export class TerminalWebglManager {
   private contextLossListener: IDisposable | null = null
   private activeSince: number | null = null
 
-  constructor(private readonly opts: WebglManagerOptions) {}
+  constructor(private readonly opts: WebglManagerOptions) {
+    if (opts.enabled === false) this.status = 'disabled'
+  }
+
+  /** Switch renderers on the existing xterm, keeping its buffer and PTY. */
+  setEnabled(enabled: boolean): boolean {
+    if (this.status === 'disposed' || enabled === (this.status !== 'disabled')) return false
+    this.clearRetryTimer()
+    this.retryCount = 0
+    this.activeSince = null
+    this.lastError = null
+    if (enabled) {
+      this.status = 'uninitialized'
+      if (this.isVisible()) this.load()
+    } else {
+      this.status = 'disabled'
+      this.disposeAddon()
+    }
+    return true
+  }
 
   getStatus(): WebglStatus {
     return this.status
@@ -76,7 +98,7 @@ export class TerminalWebglManager {
    * Attempt to load and activate the WebGL addon.
    */
   load(): void {
-    if (this.status === 'active' || this.status === 'disposed') return
+    if (this.status === 'active' || this.status === 'disabled' || this.status === 'disposed') return
 
     this.clearRetryTimer()
     this.status = this.status === 'fallback' ? 'recovering' : 'initializing'
@@ -134,7 +156,7 @@ export class TerminalWebglManager {
    * Schedule retry up to 2 times (at 1s and 3s) only if pane is visible.
    */
   private scheduleRetry(): void {
-    if (this.status === 'disposed' || this.status === 'active') return
+    if (this.status === 'disposed' || this.status === 'disabled' || this.status === 'active') return
     if (this.retryCount >= 2) return // Stop retrying after 2 attempts
 
     if (!this.isVisible()) {
@@ -184,9 +206,9 @@ export class TerminalWebglManager {
    * Resets retry quota and attempts recovery if currently on fallback.
    */
   onVisibleOrAttached(): void {
-    if (this.status === 'disposed' || this.status === 'active') return
-
-    if (this.status === 'fallback') {
+    if (this.status === 'uninitialized') {
+      if (this.isVisible()) this.load()
+    } else if (this.status === 'fallback') {
       this.clearRetryTimer()
       this.retryCount = 0
       if (this.isVisible()) {

@@ -5,6 +5,22 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-11-21
+
+### Added
+
+- Added an **iTerm2 Dark** appearance preset with a dark terminal palette, steady orange cursor, and an optional JetBrainsMono Nerd Font Mono typography preset.
+- Added a WebGL / DOM text renderer selector for iTerm2 Dark. Switching renderers preserves open terminal sessions and their contents.
+- Added a terminal rendering sample for comparing regular and bold text, ANSI colors, and RGB colors across terminal apps.
+
+### Changed
+
+- The iTerm2 Dark preset uses heavier terminal text and a minimum contrast ratio for improved readability. Other themes retain their existing rendering settings.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.1.3_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.1.2] - 2026-11-20
 
 ### Fixed
@@ -86,6 +102,7 @@ Initial release of **SwarmAgent** — one workspace for your coding agents.
 
 - **macOS (Apple Silicon / `aarch64`)**: `SwarmAgent_0.0.1_aarch64.dmg` (unsigned / ad-hoc signed local build)
 
+[0.1.3]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.0.2...v0.1.0
