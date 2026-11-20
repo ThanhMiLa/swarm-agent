@@ -5,15 +5,22 @@ workspace code. Start with `npm run tauri dev`.
 
 ## Basics
 
-- [ ] Launch → one workspace, one terminal; run a command and see output.
+- [ ] Launch → create a project with one workspace and one terminal; run a command and see output.
 - [ ] Split a pane horizontally and vertically; drag the separator; close a
       pane → the tree collapses.
 - [ ] Drag a pane header onto another pane → the two swap, shells stay alive.
-- [ ] Add / switch / rename / close / drag-reorder workspaces in the navbar.
+- [ ] Sidebar shows one tree: Project → Workspace → Terminal. Add another workspace with three
+      terminals; it uses the project folder without asking to pick it again. Rename and
+      drag-reorder projects and workspaces; a workspace cannot be dragged into another project.
+- [ ] Start a long command in one workspace and adjust its split sizes. Switch to a sibling,
+      then return: the command is still running and the split sizes and focus are unchanged.
+- [ ] Collapse a workspace or project; its terminals stay alive. Close a workspace and
+      verify sibling terminals stay alive. Close a project, confirm, and verify only its terminals stop.
 - [ ] Composer: native folder picker returns the right path, recent folders
       work, agent steppers allocate correctly, the layout preview matches the
-      result, `⌘/Ctrl + Enter` creates the workspace.
-- [ ] Navbar terminal list: clicking an entry focuses that pane.
+      result, `⌘/Ctrl + Enter` creates the project or workspace.
+- [ ] Sidebar terminal rows show agent logo and name even when a session title changes.
+      Clicking a row in another workspace activates that workspace and focuses the pane.
 - [ ] Close the window → hides to tray (ptys stay alive); tray → Show restores;
       tray → Quit exits and kills every pty.
 - [ ] The tray/menu-bar icon shows the box-logo mark (macOS: monochrome
@@ -97,6 +104,11 @@ workspace code. Start with `npm run tauri dev`.
 
 ## Agent Team
 
+- [ ] Toggle Agent Team from the title bar and close it with its × button. The rail
+      slides and fades like Projects; terminals fit once the animation settles.
+      With reduced motion enabled, the panel opens and closes immediately.
+- [ ] Hide Agent Team, then drag an AI pane. The panel slides open and accepts
+      the drop; cancelling a drag restores the panel's previous visibility.
 - [ ] Open two workspaces in the same checkout. Give each a member named `codex-1`. Confirm that each panel displays only its own roster and runs.
 
 - [ ] Add three out of four Codex panes in the same checkout. Confirm the count, exact routing by name, duplicate name rejection and stable aliases after removal.

@@ -1,6 +1,6 @@
 [package]
 name = "swarm-agent"
-version = "0.1.3"
+version = "0.1.4"
 description = "Desktop terminals and cross-CLI coordination for AI coding agents"
 authors = ["ThanhMiLa"]
 license = "GPL-3.0-only"

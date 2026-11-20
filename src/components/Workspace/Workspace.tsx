@@ -9,10 +9,11 @@ import { cn } from '@/lib/utils'
 
 interface WorkspaceProps {
   workspace: WorkspaceModel
+  cwd: string
 }
 
 /** Render one workspace: its binary split-tree of resizable terminal panes. */
-export function Workspace({ workspace }: WorkspaceProps): ReactElement {
+export function Workspace({ workspace, cwd }: WorkspaceProps): ReactElement {
   const resizeSplitNode = useAppStore((s) => s.resizeSplitNode)
 
   function renderNode(node: LayoutNode): ReactElement {
@@ -21,7 +22,7 @@ export function Workspace({ workspace }: WorkspaceProps): ReactElement {
         <TerminalPane
           key={node.id}
           leaf={node}
-          cwd={workspace.cwd}
+          cwd={cwd}
           isFocused={node.id === workspace.focusedLeafId}
           workspaceId={workspace.id}
         />
@@ -40,7 +41,7 @@ export function Workspace({ workspace }: WorkspaceProps): ReactElement {
           const a = layout[leftId]
           const b = layout[rightId]
           if (typeof a === 'number' && typeof b === 'number') {
-            resizeSplitNode(node.id, [a, b])
+            resizeSplitNode(workspace.id, node.id, [a, b])
           }
         }}
       >

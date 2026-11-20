@@ -188,15 +188,14 @@ export function resizeSplit(
 ): LayoutNode {
   if (tree.type === 'leaf') return tree
   if (tree.id === splitId) {
+    if (tree.sizes[0] === sizes[0] && tree.sizes[1] === sizes[1]) return tree
     return { ...tree, sizes: [sizes[0], sizes[1]] }
   }
-  return {
-    ...tree,
-    children: [
-      resizeSplit(tree.children[0], splitId, sizes),
-      resizeSplit(tree.children[1], splitId, sizes)
-    ]
-  }
+  const left = resizeSplit(tree.children[0], splitId, sizes)
+  const right = resizeSplit(tree.children[1], splitId, sizes)
+  return left === tree.children[0] && right === tree.children[1]
+    ? tree
+    : { ...tree, children: [left, right] }
 }
 
 /** A terminal grid: `rows` stacked rows, each holding `cols` columns. */
@@ -206,7 +205,7 @@ export interface GridShape {
 }
 
 /** The supported explicit terminal counts for the workspace composer tile selector. */
-export const TERMINAL_COUNTS = [1, 2, 4, 6, 8, 10, 12] as const
+export const TERMINAL_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const
 
 const GRID_BY_COUNT: Record<number, GridShape> = {
   1: { rows: 1, cols: 1 },

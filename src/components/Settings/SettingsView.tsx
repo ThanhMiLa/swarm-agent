@@ -45,17 +45,23 @@ interface SettingsViewProps {
  */
 export function SettingsView({ onClose, initialCategory }: SettingsViewProps): ReactElement {
   const [activeCategory, setActiveCategory] = useState<CategoryId>(initialCategory ?? 'appearance')
-  const workspaces = useAppStore((s) => s.workspaces)
+  const projects = useAppStore((s) => s.projects)
+  const workspaceModels = useAppStore((s) => s.workspaces)
+  const workspaces = projects.flatMap((project) =>
+    workspaceModels.filter((ws) => ws.projectId === project.id).map((ws) => ({
+      id: ws.id,
+      name: `${project.name} / ${ws.name}`,
+      cwd: project.cwd
+    }))
+  )
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId)
 
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
-    () => activeWorkspaceId || workspaces[0]?.id || ''
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(
+    () => workspaceModels.find((w) => w.id === activeWorkspaceId)?.projectId
   )
   const [tokenUsageExpanded, setTokenUsageExpanded] = useState<boolean>(true)
 
-  // Keep selectedWorkspaceId in sync if workspaces load/change
-  const selectedWorkspace =
-    workspaces.find((w) => w.id === selectedWorkspaceId) ?? workspaces[0] ?? null
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? projects[0]
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -120,20 +126,20 @@ export function SettingsView({ onClose, initialCategory }: SettingsViewProps): R
                       )}
                     </button>
 
-                    {/* Sub-menu accordion of external workspace projects */}
+                    {/* Token usage is aggregated by project folder, not by workspace. */}
                     {tokenUsageExpanded && (
                       <div className="ml-4 flex flex-col gap-0.5 border-l border-border/60 pl-2 pt-0.5 pb-1">
-                        {workspaces.map((ws) => {
+                        {projects.map((project) => {
                           const isSelected =
                             activeCategory === 'token-usage' &&
-                            selectedWorkspace?.id === ws.id
+                            selectedProject?.id === project.id
                           return (
                             <button
-                              key={ws.id}
+                              key={project.id}
                               type="button"
                               onClick={() => {
                                 setActiveCategory('token-usage')
-                                setSelectedWorkspaceId(ws.id)
+                                setSelectedProjectId(project.id)
                               }}
                               className={cn(
                                 'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors text-left',
@@ -141,16 +147,16 @@ export function SettingsView({ onClose, initialCategory }: SettingsViewProps): R
                                   ? 'bg-accent font-medium text-accent-foreground'
                                   : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
                               )}
-                              title={ws.cwd || ws.name}
+                              title={project.cwd || project.name}
                             >
-                              <span className="truncate">{ws.name}</span>
+                              <span className="truncate">{project.name}</span>
                             </button>
                           )
                         })}
 
-                        {workspaces.length === 0 && (
+                        {projects.length === 0 && (
                           <span className="px-2 py-1 text-[11px] text-muted-foreground italic">
-                            No workspaces
+                            No projects
                           </span>
                         )}
                       </div>
@@ -204,7 +210,7 @@ export function SettingsView({ onClose, initialCategory }: SettingsViewProps): R
               {activeCategory === 'notifications' && <NotificationsPanel />}
               {activeCategory === 'shortcuts' && <KeyboardShortcutsPanel />}
               {activeCategory === 'token-usage' && (
-                <TokenUsagePanel selectedWorkspace={selectedWorkspace} />
+                <TokenUsagePanel selectedProject={selectedProject} />
               )}
               {activeCategory === 'run-history' && <RunHistoryPanel workspaces={workspaces} />}
             </div>

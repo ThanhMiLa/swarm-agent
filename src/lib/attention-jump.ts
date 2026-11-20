@@ -9,12 +9,12 @@ import { selectFocusedTerminalId, useAppStore } from '@/store/app-store'
  * (same store/registry glue precedent as `agent-team-delivery.ts`; the tested
  * logic lives in `attention.ts`).
  * `revealTerminal` switches workspace when needed (App.tsx's activeWorkspaceId
- * effect then focuses the pane once it mounts); the explicit `focusTerminal`
- * covers the same-workspace case where no mount happens.
+ * effect then focuses the visible pane); explicit focus covers same-workspace jumps.
  */
 export function jumpToAttention(): boolean {
   const app = useAppStore.getState()
-  const panes = collectAttentionPanes(app.workspaces, useAgentStateStore.getState().byId)
+  const sidebarOrder = app.projects.flatMap((p) => app.workspaces.filter((w) => w.projectId === p.id))
+  const panes = collectAttentionPanes(sidebarOrder, useAgentStateStore.getState().byId)
   const next = nextAttentionPane(panes, selectFocusedTerminalId(app))
   if (next === undefined) return false
   app.revealTerminal(next)

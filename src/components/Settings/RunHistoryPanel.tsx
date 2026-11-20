@@ -3,11 +3,12 @@ import { confirm } from '@tauri-apps/plugin-dialog'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAgentTeamStore } from '@/store/agent-team-store'
-import type { Workspace } from '@/store/app-store'
 import { clearTeamRuns } from '@/tauri/agent-team'
 
+type WorkspaceLabel = { id: string; name: string; cwd: string }
+
 interface RunHistoryPanelProps {
-  workspaces: ReadonlyArray<Pick<Workspace, 'id' | 'name' | 'cwd'>>
+  workspaces: ReadonlyArray<WorkspaceLabel>
 }
 
 export function RunHistoryPanel({ workspaces }: RunHistoryPanelProps): ReactElement {
@@ -23,7 +24,7 @@ export function RunHistoryPanel({ workspaces }: RunHistoryPanelProps): ReactElem
   const totalRuns = rows.reduce((sum, row) => sum + row.total, 0)
   const finishedRuns = rows.reduce((sum, row) => sum + row.finished, 0)
 
-  async function clearHistory(workspace?: Pick<Workspace, 'id' | 'name'>): Promise<void> {
+  async function clearHistory(workspace?: WorkspaceLabel): Promise<void> {
     const scope = workspace ? `workspace “${workspace.name}”` : 'all open workspaces'
     setClearing(true)
     setNotice(null)

@@ -1,7 +1,5 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
-import { useDroppable } from '@dnd-kit/core'
 import { Copy, Pencil, Users, X } from 'lucide-react'
-import { AGENT_TEAM_DROP_ID } from '@/lib/agent-team-drop'
 import { templateById } from '@/lib/templates'
 import { cn } from '@/lib/utils'
 import { writeClipboard } from '@/tauri/clipboard'
@@ -33,13 +31,12 @@ const memberStatusColor: Record<MemberStatus, string> = {
 const iconButton = 'rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground'
 const supported = new Set(['codex', 'antigravity', 'opencode', 'claude-code'])
 
-export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactElement {
+export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: string; dropActive: boolean }): ReactElement {
   const team = useAgentTeamStore((s) => s.snapshot.teams.find((item) => item.id === workspaceId))
   const connected = useAgentTeamStore((s) => s.snapshot.connected)
   const holds = useAgentTeamStore((s) => s.holds)
   const error = useAgentTeamStore((s) => s.errors[workspaceId])
   const agentStates = useAgentStateStore((s) => s.byId)
-  const drop = useDroppable({ id: AGENT_TEAM_DROP_ID })
   const [view, setView] = useState<'members' | 'runs'>('members')
   const [draft, setDraft] = useState<{ memberId: string; name: string }>()
   const members = team?.members ?? []
@@ -68,13 +65,13 @@ export function AgentTeamPanel({ workspaceId }: { workspaceId: string }): ReactE
   }
 
   return (
-    <section ref={drop.setNodeRef} className={cn(
-      'flex h-full min-w-0 flex-col overflow-hidden', drop.isOver && 'ring-2 ring-inset ring-primary'
+    <section className={cn(
+      'flex h-full min-w-0 flex-col overflow-hidden', dropActive && 'ring-2 ring-inset ring-primary'
     )}>
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Users size={15} className="shrink-0 text-muted-foreground" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agent Team</h2>
-        <button type="button" aria-label="Hide Agent Team" className={iconButton} onClick={() => useTeamPanelStore.getState().setOpen(false)}><X size={14} /></button>
+        <button type="button" data-focus-return aria-label="Hide Agent Team" className={iconButton} onClick={() => useTeamPanelStore.getState().setOpen(false)}><X size={14} /></button>
       </header>
 
       <div className="flex shrink-0 gap-3 border-b border-border px-3">

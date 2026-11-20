@@ -5,6 +5,24 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-11-21
+
+### Added
+
+- Organize terminals in a **Project → Workspace → Terminal** sidebar. Each project can contain multiple independently arranged workspaces sharing its working folder.
+- Switch workspaces without closing their terminals or restarting their agent sessions. Sidebar rows show the agent logo and name.
+- Choose any number of terminals from 1 to 12 when creating a project or workspace.
+
+### Changed
+
+- The Agent Team panel now slides and fades when opened or closed, matching the Projects sidebar. Agent Teams remain scoped to individual workspaces.
+- Token usage is grouped by project; Agent Team run history remains grouped by workspace.
+- Projects and workspaces remain in memory only and are not restored after quitting the app.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.1.4_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.1.3] - 2026-11-21
 
 ### Added

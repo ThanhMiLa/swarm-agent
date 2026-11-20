@@ -23,6 +23,7 @@ import {
   type ModelProviderId,
 } from '@/lib/token-usage-summary'
 import { cn } from '@/lib/utils'
+import type { Project } from '@/store/app-store'
 import { TokenCount } from './TokenCount'
 
 function getProviderInfo(providerId: ModelProviderId): { label: string; icon?: string } {
@@ -44,17 +45,11 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
-export interface SelectedWorkspaceInfo {
-  id: string
-  name: string
-  cwd: string
-}
-
 interface TokenUsagePanelProps {
-  selectedWorkspace?: SelectedWorkspaceInfo | null
+  selectedProject?: Pick<Project, 'name' | 'cwd'>
 }
 
-export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): ReactElement {
+export function TokenUsagePanel({ selectedProject }: TokenUsagePanelProps): ReactElement {
   const [stats, setStats] = useState<TokenUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -85,23 +80,22 @@ export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): Re
   const currentProject = useMemo<ProjectTokenStats | null>(() => {
     if (!stats || stats.projects.length === 0) return null
 
-    if (selectedWorkspace) {
-      const normCwd = selectedWorkspace.cwd ? normalizePath(selectedWorkspace.cwd).toLowerCase() : ''
-      const normName = selectedWorkspace.name.toLowerCase()
+    if (selectedProject) {
+      const normCwd = selectedProject.cwd ? normalizePath(selectedProject.cwd).toLowerCase() : ''
+      const normName = selectedProject.name.toLowerCase()
 
-      const matched = stats.projects.find((p) => {
+      const exact = stats.projects.find((p) => normCwd && normalizePath(p.projectPath).toLowerCase() === normCwd)
+      if (exact) return exact
+      return stats.projects.find((p) => {
         const pNorm = normalizePath(p.projectPath).toLowerCase()
-        if (normCwd && pNorm === normCwd) return true
         if (normName && p.projectName.toLowerCase() === normName) return true
         if (normName && pNorm.endsWith('/' + normName)) return true
         return false
-      })
-      if (matched) return matched
-      return null
+      }) ?? null
     }
 
     return stats.projects[0] ?? null
-  }, [stats, selectedWorkspace])
+  }, [stats, selectedProject])
 
   const projectCost = useMemo(() => {
     if (!currentProject) return 0
@@ -116,7 +110,7 @@ export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): Re
     return currentProject ? sortDailyUsageByDate(currentProject.dailyStats) : []
   }, [currentProject])
 
-  const displayName = selectedWorkspace?.name || currentProject?.projectName || 'Project'
+  const displayName = selectedProject?.name || currentProject?.projectName || 'Project'
 
   return (
     <div className="space-y-6">
@@ -126,7 +120,7 @@ export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): Re
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Token Usage
           </h1>
-          {selectedWorkspace && (
+          {selectedProject && (
             <span className="rounded-full border border-border/60 bg-accent/60 px-2.5 py-0.5 text-xs font-medium text-foreground">
               {displayName}
             </span>
@@ -156,7 +150,7 @@ export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): Re
         </div>
       )}
 
-      {/* Empty state when no stats exist for this workspace */}
+      {/* Empty state when no stats exist for this project */}
       {!loading && !currentProject && (
         <div className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-muted-foreground" />
@@ -166,7 +160,7 @@ export function TokenUsagePanel({ selectedWorkspace }: TokenUsagePanelProps): Re
           </h3>
           <p className="mt-1.5 text-xs text-muted-foreground max-w-md mx-auto">
             When you run prompts in <strong>Claude Code</strong>, <strong>Codex</strong>,{' '}
-            <strong>Antigravity</strong>, or <strong>OpenCode</strong> in this workspace,
+            <strong>Antigravity</strong>, or <strong>OpenCode</strong> in this project,
             token usage will automatically be tracked,
             persisted, and summarized here by Date and Model.
           </p>

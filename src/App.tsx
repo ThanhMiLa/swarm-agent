@@ -45,6 +45,7 @@ import { SettingsView } from '@/components/Settings/SettingsView'
 import { TitleBar } from '@/components/TitleBar/TitleBar'
 import { Workspace, PaneDragGhost } from '@/components/Workspace/Workspace'
 import { Welcome } from '@/components/Welcome/Welcome'
+import { Button } from '@/components/ui/button'
 import { useUpdaterStore } from '@/store/updater-store'
 import { PERIODIC_CHECK_INTERVAL_MS, STARTUP_CHECK_DELAY_MS } from '@/lib/updater-flow'
 import { onUpdateCheckRequested } from '@/tauri/updater'
@@ -80,9 +81,11 @@ function liveTerminalIds(workspaces: WorkspaceModel[]): Set<string> {
 }
 
 export default function App(): ReactElement {
+  const projects = useAppStore((s) => s.projects)
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId)
   const welcomeFocused = useAppStore((s) => s.welcomeFocused)
+  const welcomeProjectId = useAppStore((s) => s.welcomeProjectId)
   const openWelcome = useAppStore((s) => s.openWelcome)
   const closeWelcome = useAppStore((s) => s.closeWelcome)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -131,10 +134,10 @@ export default function App(): ReactElement {
     if (action.kind === 'reorder') reorderPane(action.activeLeafId, action.overLeafId)
   }
 
-  const noWorkspaces = workspaces.length === 0
-  // Welcome shows when explicitly focused, or forced (uncloseable) when none exist.
-  const showWelcome = welcomeFocused || noWorkspaces
-  const welcomeClosable = !noWorkspaces
+  const projectFolders = new Map(projects.map((p) => [p.id, p.cwd]))
+  // The first project must be created before the composer can be dismissed.
+  const showWelcome = welcomeFocused || projects.length === 0
+  const welcomeClosable = projects.length > 0
 
   useEffect(() => {
     // Await the native startup preference before exposing any editable fields.
@@ -350,6 +353,7 @@ export default function App(): ReactElement {
   useEffect(
     () =>
       useAppStore.subscribe((state, previous) => {
+        if (state.workspaces === previous.workspaces) return
         const live = liveTerminalIds(state.workspaces)
         disposeOrphanTerminals(live)
         for (const workspace of previous.workspaces) {
@@ -483,7 +487,6 @@ export default function App(): ReactElement {
 
       <div className="relative flex min-h-0 flex-1">
         <Navbar
-          onNewWorkspace={openWelcome}
           settingsOpen={settingsOpen}
           onToggleSettings={() => {
             setSettingsTab('appearance')
@@ -506,7 +509,7 @@ export default function App(): ReactElement {
                   restoreTeamPanel()
                 }}
               >
-                <div className="flex h-full w-full overflow-hidden">
+                 <div inert={showWelcome} className="flex h-full w-full overflow-hidden">
                   <div className="relative h-full min-w-0 flex-1 overflow-hidden">
                     {workspaces.map((ws) => (
                       <div
@@ -514,11 +517,11 @@ export default function App(): ReactElement {
                         className="absolute inset-0"
                         style={{ display: ws.id === activeWorkspaceId ? 'block' : 'none' }}
                       >
-                        <Workspace workspace={ws} />
+                         <Workspace workspace={ws} cwd={projectFolders.get(ws.projectId) ?? ''} />
                       </div>
                     ))}
                   </div>
-                  {activeWs && <RightPanel key={activeWs.id} workspaceId={activeWs.id} />}
+                   {activeWs && <RightPanel workspaceId={activeWs.id} />}
                 </div>
                 <DragOverlay>
                   {draggingLeaf ? <PaneDragGhost leaf={draggingLeaf} /> : null}
@@ -527,7 +530,13 @@ export default function App(): ReactElement {
 
               {showWelcome && (
                 <div className="absolute inset-0 z-20 overflow-y-auto bg-canvas">
-                  <Welcome />
+                  <Welcome key={welcomeProjectId ?? 'new-project'} />
+                </div>
+              )}
+              {!showWelcome && !activeWs && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+                  <p>No open workspaces.</p>
+                  <Button variant="outline" onClick={() => openWelcome(projects[0].id)}>New workspace</Button>
                 </div>
               )}
             </div>

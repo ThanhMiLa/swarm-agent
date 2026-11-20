@@ -5,7 +5,7 @@ import {
   selectWorkspaceByTerminalId,
   selectFocusedTerminalId,
   type AppStore,
-  type CreateWorkspaceConfig,
+  type CreateProjectConfig,
   type Workspace
 } from './app-store'
 import { collectLeaves, type SplitNode } from '@/lib/layout-tree'
@@ -14,7 +14,7 @@ function freshStore(): StoreApi<AppStore> {
   return createStore<AppStore>()(appStoreCreator)
 }
 
-const SINGLE_TERMINAL: CreateWorkspaceConfig = {
+const SINGLE_TERMINAL: CreateProjectConfig = {
   cwd: 'C:/work',
   terminalCount: 1,
   agentIds: ['terminal']
@@ -25,11 +25,15 @@ function panes(n: number): string[] {
   return Array.from({ length: n }, () => 'terminal')
 }
 
-/** A fresh store with one workspace already created from `config`. */
-function storeWithWorkspace(config: CreateWorkspaceConfig = SINGLE_TERMINAL): StoreApi<AppStore> {
+/** A fresh store with one project and its first workspace. */
+function storeWithWorkspace(config: CreateProjectConfig = SINGLE_TERMINAL): StoreApi<AppStore> {
   const store = freshStore()
-  store.getState().createWorkspace(config)
+  store.getState().createProject(config)
   return store
+}
+
+function addWorkspace(store: StoreApi<AppStore>, config = SINGLE_TERMINAL): void {
+  store.getState().createWorkspace(activeWorkspace(store).projectId, config)
 }
 
 function activeWorkspace(store: StoreApi<AppStore>): Workspace {
@@ -42,7 +46,8 @@ function activeWorkspace(store: StoreApi<AppStore>): Workspace {
 // --- initial state --------------------------------------------------------
 
 describe('initial state', () => {
-  it('starts with no workspaces', () => {
+  it('starts with no projects or workspaces', () => {
+    expect(freshStore().getState().projects).toHaveLength(0)
     expect(freshStore().getState().workspaces).toHaveLength(0)
   })
 
@@ -51,34 +56,87 @@ describe('initial state', () => {
   })
 })
 
-// --- createWorkspace ------------------------------------------------------
-
-describe('createWorkspace', () => {
-  it('names the workspace after its folder', () => {
+describe('createProject', () => {
+  it('names the project after its folder and creates Workspace 1', () => {
     const store = storeWithWorkspace()
-    expect(store.getState().workspaces).toHaveLength(1)
-    expect(store.getState().workspaces[0].name).toBe('work')
+    const { projects, workspaces } = store.getState()
+    expect(projects).toHaveLength(1)
+    expect(projects[0].name).toBe('work')
+    expect(workspaces).toHaveLength(1)
+    expect(workspaces[0]).toMatchObject({ name: 'Workspace 1', projectId: projects[0].id })
   })
 
   it('suffixes repeats of the same folder name', () => {
     const store = storeWithWorkspace()
-    store.getState().createWorkspace(SINGLE_TERMINAL)
-    expect(store.getState().workspaces.map((w) => w.name)).toEqual(['work', 'work (1)'])
+    store.getState().createProject({ ...SINGLE_TERMINAL, cwd: '/somewhere/work' })
+    expect(store.getState().projects.map((p) => p.name)).toEqual(['work', 'work (1)'])
+    expect(store.getState().workspaces.map((w) => w.name)).toEqual(['Workspace 1', 'Workspace 1'])
   })
 
-  it('falls back to "Workspace N" when no folder was picked', () => {
-    const store = storeWithWorkspace({ ...SINGLE_TERMINAL, cwd: '' })
-    expect(store.getState().workspaces[0].name).toBe('Workspace 1')
+  it('stores the chosen working directory on the project', () => {
+    const store = storeWithWorkspace({ ...SINGLE_TERMINAL, cwd: ' D:/projects/app ' })
+    expect(store.getState().projects[0].cwd).toBe('D:/projects/app')
+  })
+})
+
+describe('project actions', () => {
+  it('renames and reorders projects without touching workspace layouts or focus', () => {
+    const store = storeWithWorkspace()
+    store.getState().createProject({ ...SINGLE_TERMINAL, cwd: '/other' })
+    const before = store.getState()
+    const [first, second] = before.projects
+    before.renameProject(first.id, '  Web app  ')
+    before.moveProject(first.id, second.id)
+    expect(store.getState().projects.map((p) => p.name)).toEqual(['other', 'Web app'])
+    expect(store.getState().workspaces).toBe(before.workspaces)
+    expect(store.getState().activeWorkspaceId).toBe(before.activeWorkspaceId)
   })
 
+  it('closes all workspaces of that project and cancels its composer', () => {
+    const store = storeWithWorkspace()
+    addWorkspace(store)
+    const closingProjectId = activeWorkspace(store).projectId
+    const closingWorkspaceId = activeWorkspace(store).id
+    store.getState().createProject({ ...SINGLE_TERMINAL, cwd: '/other' })
+    const surviving = activeWorkspace(store)
+    store.getState().setActiveWorkspace(closingWorkspaceId)
+    store.getState().openWelcome(closingProjectId)
+    store.getState().closeProject(closingProjectId)
+    expect(store.getState().projects.map((p) => p.id)).toEqual([surviving.projectId])
+    expect(store.getState().workspaces).toEqual([surviving])
+    expect(store.getState().activeWorkspaceId).toBe(surviving.id)
+    expect(store.getState().welcomeProjectId).toBeNull()
+    expect(store.getState().welcomeFocused).toBe(false)
+  })
+})
+
+describe('createWorkspace', () => {
   it('makes the new workspace active', () => {
     const store = storeWithWorkspace()
-    expect(store.getState().activeWorkspaceId).toBe(store.getState().workspaces[0].id)
+    addWorkspace(store)
+    expect(store.getState().activeWorkspaceId).toBe(store.getState().workspaces[1].id)
   })
 
-  it('stores the chosen working directory', () => {
-    const store = storeWithWorkspace({ ...SINGLE_TERMINAL, cwd: 'D:/projects/app' })
-    expect(activeWorkspace(store).cwd).toBe('D:/projects/app')
+  it('adds a distinct layout with three panes to the chosen project', () => {
+    const store = storeWithWorkspace()
+    const [project] = store.getState().projects
+    const first = activeWorkspace(store)
+    store.getState().createProject({ ...SINGLE_TERMINAL, cwd: '/other' })
+    store.getState().createWorkspace(project.id, {
+      terminalCount: 3, agentIds: ['codex', 'codex', 'claude-code']
+    })
+    const ws = activeWorkspace(store)
+    expect(ws).toMatchObject({ projectId: project.id, name: 'Workspace 2' })
+    const leaves = collectLeaves(ws.layout)
+    expect(leaves.map((l) => l.agentId)).toEqual(['codex', 'codex', 'claude-code'])
+    expect(new Set([...leaves, ...collectLeaves(first.layout)].map((l) => l.terminalId)).size).toBe(4)
+    expect(store.getState().workspaces[0]).toBe(first)
+  })
+
+  it('does not create an orphan workspace when the project does not exist', () => {
+    const store = freshStore()
+    store.getState().createWorkspace('missing', SINGLE_TERMINAL)
+    expect(store.getState().workspaces).toEqual([])
   })
 
   it('builds the requested number of terminal panes', () => {
@@ -141,9 +199,25 @@ describe('setActiveWorkspace', () => {
   it('switches the active workspace', () => {
     const store = storeWithWorkspace()
     const firstId = store.getState().workspaces[0].id
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     store.getState().setActiveWorkspace(firstId)
     expect(store.getState().activeWorkspaceId).toBe(firstId)
+  })
+
+  it('preserves both split trees, focused panes and terminal ids when switching within a project', () => {
+    const store = storeWithWorkspace()
+    store.getState().splitPane(activeWorkspace(store).focusedLeafId, 'horizontal')
+    const { id, layout } = activeWorkspace(store)
+    store.getState().resizeSplitNode(id, layout.id, [35, 65])
+    const first = activeWorkspace(store)
+    addWorkspace(store)
+    store.getState().splitPane(activeWorkspace(store).focusedLeafId, 'vertical')
+    const second = activeWorkspace(store)
+
+    store.getState().setActiveWorkspace(first.id)
+    expect(activeWorkspace(store)).toBe(first)
+    store.getState().setActiveWorkspace(second.id)
+    expect(activeWorkspace(store)).toBe(second)
   })
 })
 
@@ -165,7 +239,7 @@ describe('renameWorkspace', () => {
   it('ignores an empty or whitespace-only name', () => {
     const store = storeWithWorkspace()
     store.getState().renameWorkspace(store.getState().workspaces[0].id, '   ')
-    expect(store.getState().workspaces[0].name).toBe('work')
+    expect(store.getState().workspaces[0].name).toBe('Workspace 1')
   })
 })
 
@@ -175,16 +249,16 @@ describe('closeWorkspace', () => {
   it('removes a non-active workspace', () => {
     const store = storeWithWorkspace()
     const firstId = store.getState().workspaces[0].id
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     store.getState().closeWorkspace(firstId)
     expect(store.getState().workspaces).toHaveLength(1)
-    expect(store.getState().workspaces[0].name).toBe('work (1)')
+    expect(store.getState().workspaces[0].name).toBe('Workspace 2')
   })
 
   it('keeps the active workspace unchanged when closing another', () => {
     const store = storeWithWorkspace()
     const firstId = store.getState().workspaces[0].id
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     const activeBefore = store.getState().activeWorkspaceId
     store.getState().closeWorkspace(firstId)
     expect(store.getState().activeWorkspaceId).toBe(activeBefore)
@@ -193,18 +267,22 @@ describe('closeWorkspace', () => {
   it('moves the active marker when closing the active workspace', () => {
     const store = storeWithWorkspace()
     const firstId = store.getState().workspaces[0].id
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     const secondId = store.getState().activeWorkspaceId
     store.getState().closeWorkspace(secondId)
     expect(store.getState().workspaces).toHaveLength(1)
     expect(store.getState().activeWorkspaceId).toBe(firstId)
   })
 
-  it('leaves no workspaces when the only workspace is closed', () => {
+  it('leaves the project open when its last workspace is closed', () => {
     const store = storeWithWorkspace()
+    const [project] = store.getState().projects
     store.getState().closeWorkspace(activeWorkspace(store).id)
     expect(store.getState().workspaces).toHaveLength(0)
     expect(store.getState().activeWorkspaceId).toBe('')
+    expect(store.getState().projects).toEqual([project])
+    store.getState().createWorkspace(project.id, SINGLE_TERMINAL)
+    expect(activeWorkspace(store).name).toBe('Workspace 2')
   })
 })
 
@@ -213,8 +291,8 @@ describe('closeWorkspace', () => {
 describe('moveWorkspace', () => {
   function threeWorkspaces(): StoreApi<AppStore> {
     const store = storeWithWorkspace()
-    store.getState().createWorkspace(SINGLE_TERMINAL)
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
+    addWorkspace(store)
     return store
   }
 
@@ -223,9 +301,9 @@ describe('moveWorkspace', () => {
     const [a, , c] = store.getState().workspaces
     store.getState().moveWorkspace(a.id, c.id)
     expect(store.getState().workspaces.map((w) => w.name)).toEqual([
-      'work (1)',
-      'work (2)',
-      'work'
+      'Workspace 2',
+      'Workspace 3',
+      'Workspace 1'
     ])
   })
 
@@ -234,9 +312,9 @@ describe('moveWorkspace', () => {
     const [a, , c] = store.getState().workspaces
     store.getState().moveWorkspace(c.id, a.id)
     expect(store.getState().workspaces.map((w) => w.name)).toEqual([
-      'work (2)',
-      'work',
-      'work (1)'
+      'Workspace 3',
+      'Workspace 1',
+      'Workspace 2'
     ])
   })
 
@@ -267,6 +345,14 @@ describe('moveWorkspace', () => {
     const [a, , c] = store.getState().workspaces
     store.getState().moveWorkspace(a.id, c.id)
     expect(store.getState().activeWorkspaceId).toBe(activeBefore)
+  })
+
+  it('does not reorder workspaces across projects', () => {
+    const store = threeWorkspaces()
+    store.getState().createProject(SINGLE_TERMINAL)
+    const before = store.getState().workspaces
+    store.getState().moveWorkspace(before[0].id, activeWorkspace(store).id)
+    expect(store.getState().workspaces).toBe(before)
   })
 })
 
@@ -326,7 +412,7 @@ describe('closePane', () => {
 
   it('closes the workspace when its last pane is closed', () => {
     const store = storeWithWorkspace()
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     const secondId = store.getState().activeWorkspaceId
     store.getState().closePane(activeWorkspace(store).focusedLeafId)
     expect(store.getState().workspaces.some((w) => w.id === secondId)).toBe(false)
@@ -347,8 +433,18 @@ describe('resizeSplitNode', () => {
     const store = storeWithWorkspace()
     store.getState().splitPane(activeWorkspace(store).focusedLeafId, 'horizontal')
     const layout = activeWorkspace(store).layout as SplitNode
-    store.getState().resizeSplitNode(layout.id, [30, 70])
+    store.getState().resizeSplitNode(activeWorkspace(store).id, layout.id, [30, 70])
     expect((activeWorkspace(store).layout as SplitNode).sizes).toEqual([30, 70])
+  })
+
+  it('ignores callbacks from a hidden workspace', () => {
+    const store = storeWithWorkspace(FOUR_PANES)
+    const first = activeWorkspace(store)
+    addWorkspace(store, FOUR_PANES)
+    const second = activeWorkspace(store)
+    store.getState().resizeSplitNode(first.id, first.layout.id, [80, 20])
+    expect(store.getState().workspaces).toEqual([first, second])
+    expect(activeWorkspace(store)).toBe(second)
   })
 })
 
@@ -432,51 +528,59 @@ describe('setPaneShell', () => {
 // --- welcome state --------------------------------------------------------
 
 describe('welcome state', () => {
-  it('starts open and focused', () => {
+  it('starts in New project', () => {
     const s = freshStore().getState()
-    expect(s.welcomeOpen).toBe(true)
     expect(s.welcomeFocused).toBe(true)
+    expect(s.welcomeProjectId).toBeNull()
   })
 
-  it('openWelcome opens and focuses it', () => {
-    const store = storeWithWorkspace() // creating a workspace closes welcome
-    store.getState().openWelcome()
-    expect(store.getState().welcomeOpen).toBe(true)
-    expect(store.getState().welcomeFocused).toBe(true)
-  })
-
-  it('closeWelcome closes and unfocuses it', () => {
-    const store = freshStore()
-    store.getState().closeWelcome()
-    expect(store.getState().welcomeOpen).toBe(false)
-    expect(store.getState().welcomeFocused).toBe(false)
-  })
-
-  it('focusWelcome focuses it', () => {
+  it('opens New workspace for the chosen project', () => {
     const store = storeWithWorkspace()
-    store.getState().focusWelcome()
+    const [project] = store.getState().projects
+    store.getState().setWelcomeFolder('/draft')
+    store.getState().openWelcome(project.id)
     expect(store.getState().welcomeFocused).toBe(true)
+    expect(store.getState().welcomeProjectId).toBe(project.id)
+    expect(store.getState().welcomeFolder).toBe('/draft')
+  })
+
+  it('closes and clears the target on cancel', () => {
+    const store = storeWithWorkspace()
+    store.getState().openWelcome(activeWorkspace(store).projectId)
+    store.getState().closeWelcome()
+    expect(store.getState().welcomeFocused).toBe(false)
+    expect(store.getState().welcomeProjectId).toBeNull()
+  })
+
+  it('can switch the composer back to New project', () => {
+    const store = storeWithWorkspace()
+    store.getState().openWelcome(activeWorkspace(store).projectId)
+    store.getState().openWelcome()
+    expect(store.getState().welcomeFocused).toBe(true)
+    expect(store.getState().welcomeProjectId).toBeNull()
   })
 
   it('creating a workspace closes welcome', () => {
     const store = storeWithWorkspace()
-    expect(store.getState().welcomeOpen).toBe(false)
+    store.getState().openWelcome(activeWorkspace(store).projectId)
+    addWorkspace(store)
     expect(store.getState().welcomeFocused).toBe(false)
+    expect(store.getState().welcomeProjectId).toBeNull()
   })
 
   it('switching to a workspace unfocuses welcome', () => {
     const store = storeWithWorkspace()
     const id = store.getState().workspaces[0].id
-    store.getState().focusWelcome()
+    store.getState().openWelcome()
     store.getState().setActiveWorkspace(id)
     expect(store.getState().welcomeFocused).toBe(false)
   })
 
-  it('closing the only workspace reopens welcome', () => {
+  it('closing the only project returns to New project', () => {
     const store = storeWithWorkspace()
-    store.getState().closeWorkspace(store.getState().workspaces[0].id)
-    expect(store.getState().welcomeOpen).toBe(true)
+    store.getState().closeProject(activeWorkspace(store).projectId)
     expect(store.getState().welcomeFocused).toBe(true)
+    expect(store.getState().welcomeProjectId).toBeNull()
   })
 })
 
@@ -508,7 +612,7 @@ describe('selectFocusedTerminalId', () => {
   it('follows the active workspace when the user switches tabs', () => {
     const store = storeWithWorkspace()
     const first = activeWorkspace(store)
-    store.getState().createWorkspace(SINGLE_TERMINAL)
+    addWorkspace(store)
     store.getState().setActiveWorkspace(first.id)
     expect(selectFocusedTerminalId(store.getState())).toBe(collectLeaves(first.layout)[0].terminalId)
   })
@@ -516,17 +620,27 @@ describe('selectFocusedTerminalId', () => {
   it('returns undefined when there is no workspace', () => {
     expect(selectFocusedTerminalId(freshStore().getState())).toBeUndefined()
   })
+
+  it('has no focused terminal while the composer covers the workspace', () => {
+    const store = storeWithWorkspace()
+    const { openWelcome, closeWelcome } = store.getState()
+    const before = selectFocusedTerminalId(store.getState())
+    openWelcome(activeWorkspace(store).projectId)
+    expect(selectFocusedTerminalId(store.getState())).toBeUndefined()
+    closeWelcome()
+    expect(selectFocusedTerminalId(store.getState())).toBe(before)
+  })
 })
 
 // --- reorderPane ----------------------------------------------------------
 
-const TWO_PANES: CreateWorkspaceConfig = {
+const TWO_PANES: CreateProjectConfig = {
   cwd: 'C:/w',
   terminalCount: 2,
   agentIds: ['claude-code', 'terminal']
 }
 
-const FOUR_PANES: CreateWorkspaceConfig = {
+const FOUR_PANES: CreateProjectConfig = {
   cwd: 'C:/w',
   terminalCount: 4,
   agentIds: ['claude-code', 'terminal', 'codex', 'opencode']
@@ -582,7 +696,7 @@ describe('reorderPane', () => {
     const store = storeWithWorkspace(FOUR_PANES) // workspace 1
     const firstWsId = store.getState().activeWorkspaceId
     const firstLayoutBefore = store.getState().workspaces.find((w) => w.id === firstWsId)!.layout
-    store.getState().createWorkspace(FOUR_PANES) // workspace 2 — now the active one
+    addWorkspace(store, FOUR_PANES) // workspace 2 — now the active one
     const ids = collectLeaves(activeWorkspace(store).layout).map((l) => l.id)
     store.getState().reorderPane(ids[0], ids[2])
     const firstLayoutAfter = store.getState().workspaces.find((w) => w.id === firstWsId)!.layout
@@ -611,10 +725,10 @@ describe('drop target', () => {
 describe('revealTerminal', () => {
   it('activates the owning workspace and focuses the pane', () => {
     const store = freshStore()
-    store.getState().createWorkspace({ cwd: '/one', terminalCount: 2, agentIds: panes(2) })
+    store.getState().createProject({ cwd: '/one', terminalCount: 2, agentIds: panes(2) })
     const first = activeWorkspace(store)
     const targetLeaf = collectLeaves(first.layout)[1]
-    store.getState().createWorkspace(SINGLE_TERMINAL) // becomes active
+    addWorkspace(store) // becomes active
     expect(store.getState().activeWorkspaceId).not.toBe(first.id)
 
     store.getState().revealTerminal(targetLeaf.terminalId)

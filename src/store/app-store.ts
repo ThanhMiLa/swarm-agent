@@ -14,20 +14,26 @@ import {
 } from '@/lib/layout-tree'
 import type { ShellId } from '@/lib/terminal-pref'
 import { DEFAULT_TEMPLATE_ID } from '@/lib/templates'
-import { workspaceNameFor } from '@/lib/workspace-name'
+import { projectNameFor } from '@/lib/project-name'
+
+export interface Project {
+  id: string
+  name: string
+  /** Default working directory for every workspace in the project. */
+  cwd: string
+  nextWorkspaceNumber: number
+}
 
 /** A workspace: a named binary split-tree of terminal panes. */
 export interface Workspace {
   id: string
   name: string
-  /** Working directory every terminal in this workspace starts from. */
-  cwd: string
+  projectId: string
   layout: LayoutNode
   focusedLeafId: string
 }
 
 export interface CreateWorkspaceConfig {
-  cwd: string
   terminalCount: number
   agentIds: string[]
   /** Sessions to resume, one extra pane each, appended after the stepper
@@ -36,16 +42,19 @@ export interface CreateWorkspaceConfig {
   resumePanes?: Array<{ agentId: string; sessionId: string; cwd: string }>
 }
 
+export interface CreateProjectConfig extends CreateWorkspaceConfig {
+  cwd: string
+}
+
 export interface AppState {
+  projects: Project[]
   workspaces: Workspace[]
   activeWorkspaceId: string
-  /** Monotonic counter — the "Workspace N" fallback name when no cwd is picked. */
-  nextWorkspaceNumber: number
-  /** Whether the Welcome tab exists in the tab strip. */
-  welcomeOpen: boolean
-  /** Whether the Welcome tab (vs the active workspace) is the foreground view. */
+  /** Whether the project/workspace composer is the foreground view. */
   welcomeFocused: boolean
-  /** Draft working folder shown in the Welcome form. */
+  /** Composer target; null means create a new project instead. */
+  welcomeProjectId: string | null
+  /** Draft working folder for the New project form. */
   welcomeFolder: string
   /**
    * Terminal the OS drag is currently hovering, for the drop-target ring.
@@ -55,10 +64,13 @@ export interface AppState {
 }
 
 export interface AppActions {
-  createWorkspace: (config: CreateWorkspaceConfig) => void
+  createProject: (config: CreateProjectConfig) => void
+  renameProject: (id: string, name: string) => void
+  closeProject: (id: string) => void
+  moveProject: (fromId: string, toId: string) => void
+  createWorkspace: (projectId: string, config: CreateWorkspaceConfig) => void
   setWelcomeFolder: (path: string) => void
-  openWelcome: () => void
-  focusWelcome: () => void
+  openWelcome: (projectId?: string) => void
   closeWelcome: () => void
   setActiveWorkspace: (id: string) => void
   renameWorkspace: (id: string, name: string) => void
@@ -72,7 +84,7 @@ export interface AppActions {
   splitPane: (leafId: string, direction: Direction) => void
   closePane: (leafId: string) => void
   reorderPane: (fromLeafId: string, toLeafId: string) => void
-  resizeSplitNode: (splitId: string, sizes: [number, number]) => void
+  resizeSplitNode: (workspaceId: string, splitId: string, sizes: [number, number]) => void
   setPaneAgent: (leafId: string, agentId: string) => void
   setPaneCwd: (leafId: string, cwd: string | undefined) => void
   setPaneShell: (leafId: string, shellId: ShellId) => void
@@ -99,6 +111,27 @@ function makeLeaf(): LeafNode {
   return { type: 'leaf', id: uid(), terminalId: uid() }
 }
 
+function makeWorkspace(project: Project, config: CreateWorkspaceConfig, name: string): Workspace {
+  let paneIndex = 0
+  const resumePanes = config.resumePanes ?? []
+  const layout = paneLayoutFor(config.terminalCount + resumePanes.length, () => {
+    const i = paneIndex++
+    const resume = resumePanes[i - config.terminalCount]
+    return resume
+      ? { ...makeLeaf(), agentId: resume.agentId, resumeSessionId: resume.sessionId, cwd: resume.cwd }
+      : { ...makeLeaf(), agentId: config.agentIds[i] ?? DEFAULT_TEMPLATE_ID }
+  }, uid)
+  return {
+    id: uid(),
+    projectId: project.id,
+    name,
+    layout,
+    focusedLeafId: collectLeaves(layout)[0].id
+  }
+}
+
+const closedWelcome = { welcomeFocused: false, welcomeProjectId: null } as const
+
 /** Return the active workspace, or `undefined` if it cannot be resolved. */
 export function selectActiveWorkspace(state: AppState): Workspace | undefined {
   return state.workspaces.find((w) => w.id === state.activeWorkspaceId)
@@ -116,9 +149,10 @@ export function selectWorkspaceByTerminalId(
 
 /**
  * The terminal that should own the keyboard: the focused leaf of the active
- * workspace. `undefined` when no workspace exists (Welcome-only launch).
+ * workspace. `undefined` while the composer is visible or no workspace exists.
  */
 export function selectFocusedTerminalId(state: AppState): string | undefined {
+  if (state.welcomeFocused) return undefined
   const ws = selectActiveWorkspace(state)
   if (!ws) return undefined
   return findLeaf(ws.layout, ws.focusedLeafId)?.terminalId
@@ -126,84 +160,104 @@ export function selectFocusedTerminalId(state: AppState): string | undefined {
 
 /** Map the active workspace through `fn`, leaving the others untouched. */
 function mapActive(state: AppState, fn: (w: Workspace) => Workspace): Pick<AppState, 'workspaces'> {
-  return {
-    workspaces: state.workspaces.map((w) => (w.id === state.activeWorkspaceId ? fn(w) : w))
-  }
+  const index = state.workspaces.findIndex((w) => w.id === state.activeWorkspaceId)
+  if (index === -1) return state
+  const updated = fn(state.workspaces[index])
+  if (updated === state.workspaces[index]) return state
+  return { workspaces: state.workspaces.map((w, i) => i === index ? updated : w) }
 }
 
 // --- store ----------------------------------------------------------------
 
 export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
+  projects: [],
   workspaces: [],
   activeWorkspaceId: '',
-  nextWorkspaceNumber: 1,
-  welcomeOpen: true,
   welcomeFocused: true,
+  welcomeProjectId: null,
   dropTargetTerminalId: null,
   welcomeFolder: '',
 
-  createWorkspace: (config) =>
+  createProject: (config) =>
     set((s) => {
-      // Pane count = squad size (one agent id per pane); paneLayoutFor derives
-      // the grid/split shape. makeWizardLeaf is called row-major, matching the
-      // agentIds order. The ?? fallback is defensive — agentIds.length panes
-      // always have a matching id.
-      let paneIndex = 0
-      const resumePanes = config.resumePanes ?? []
-      const makeWizardLeaf = (): LeafNode => {
-        const i = paneIndex++
-        const resume = i >= config.terminalCount ? resumePanes[i - config.terminalCount] : undefined
-        if (resume) {
-          return {
-            type: 'leaf',
-            id: uid(),
-            terminalId: uid(),
-            agentId: resume.agentId,
-            resumeSessionId: resume.sessionId,
-            cwd: resume.cwd
-          }
-        }
-        return {
-          type: 'leaf',
-          id: uid(),
-          terminalId: uid(),
-          agentId: config.agentIds[i] ?? DEFAULT_TEMPLATE_ID,
-        }
-      }
-      const layout = paneLayoutFor(config.terminalCount + resumePanes.length, makeWizardLeaf, uid)
-      const ws: Workspace = {
+      const project: Project = {
         id: uid(),
-        name: workspaceNameFor(
-          config.cwd,
-          s.workspaces.map((w) => w.name),
-          s.nextWorkspaceNumber
-        ),
-        cwd: config.cwd,
-        layout,
-        focusedLeafId: collectLeaves(layout)[0].id
+        name: projectNameFor(config.cwd, s.projects.map((p) => p.name)),
+        cwd: config.cwd.trim(),
+        nextWorkspaceNumber: 2
       }
+      const ws = makeWorkspace(project, config, 'Workspace 1')
       return {
+        projects: [...s.projects, project],
         workspaces: [...s.workspaces, ws],
         activeWorkspaceId: ws.id,
-        nextWorkspaceNumber: s.nextWorkspaceNumber + 1,
-        welcomeOpen: false,
-        welcomeFocused: false
+        ...closedWelcome
+      }
+    }),
+
+  renameProject: (id, name) =>
+    set((s) => {
+      const trimmed = name.trim()
+      if (!trimmed) return s
+      return { projects: s.projects.map((p) => (p.id === id ? { ...p, name: trimmed } : p)) }
+    }),
+
+  closeProject: (id) =>
+    set((s) => {
+      if (!s.projects.some((p) => p.id === id)) return s
+      const projects = s.projects.filter((p) => p.id !== id)
+      const workspaces = s.workspaces.filter((w) => w.projectId !== id)
+      const activeWorkspaceId = workspaces.some((w) => w.id === s.activeWorkspaceId)
+        ? s.activeWorkspaceId
+        : workspaces[0]?.id ?? ''
+      return {
+        projects,
+        workspaces,
+        activeWorkspaceId,
+        ...(projects.length === 0
+          ? { welcomeFocused: true, welcomeProjectId: null }
+          : s.welcomeProjectId === id ? closedWelcome : {})
+      }
+    }),
+
+  moveProject: (fromId, toId) =>
+    set((s) => {
+      const from = s.projects.findIndex((p) => p.id === fromId)
+      const to = s.projects.findIndex((p) => p.id === toId)
+      if (from === -1 || to === -1 || from === to) return s
+      return { projects: arrayMove(s.projects, from, to) }
+    }),
+
+  createWorkspace: (projectId, config) =>
+    set((s) => {
+      const project = s.projects.find((p) => p.id === projectId)
+      if (!project) return s
+      const names = new Set(s.workspaces.filter((w) => w.projectId === projectId).map((w) => w.name))
+      let number = project.nextWorkspaceNumber
+      while (names.has(`Workspace ${number}`)) number++
+      const ws = makeWorkspace(project, config, `Workspace ${number}`)
+      return {
+        projects: s.projects.map((p) => p.id === projectId ? { ...p, nextWorkspaceNumber: number + 1 } : p),
+        workspaces: [...s.workspaces, ws],
+        activeWorkspaceId: ws.id,
+        ...closedWelcome
       }
     }),
 
   setWelcomeFolder: (path) => set({ welcomeFolder: path }),
 
-  openWelcome: () => set({ welcomeOpen: true, welcomeFocused: true }),
+  openWelcome: (projectId) =>
+    set((s) => projectId !== undefined && !s.projects.some((p) => p.id === projectId)
+      ? s
+      : { welcomeFocused: true, welcomeProjectId: projectId ?? null }),
 
-  focusWelcome: () => set({ welcomeFocused: true }),
-
-  closeWelcome: () => set({ welcomeOpen: false, welcomeFocused: false }),
+  closeWelcome: () => set(closedWelcome),
 
   setActiveWorkspace: (id) =>
     set((s) =>
       s.workspaces.some((w) => w.id === id)
-        ? { activeWorkspaceId: id, welcomeFocused: false }
-        : {}
+        ? { activeWorkspaceId: id, ...closedWelcome }
+        : s
     ),
 
   renameWorkspace: (id, name) =>
@@ -218,26 +272,30 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
   closeWorkspace: (id) =>
     set((s) => {
       const index = s.workspaces.findIndex((w) => w.id === id)
-      if (index === -1) return {}
+      if (index === -1) return s
       const remaining = s.workspaces.filter((w) => w.id !== id)
-      // Closing the last workspace leaves none — the app reopens the setup wizard.
-      if (remaining.length === 0) {
-        return { workspaces: [], activeWorkspaceId: '', welcomeOpen: true, welcomeFocused: true }
-      }
       let activeWorkspaceId = s.activeWorkspaceId
       if (id === s.activeWorkspaceId) {
-        activeWorkspaceId = remaining[Math.min(index, remaining.length - 1)].id
+        const inProject = (w: Workspace): boolean => w.projectId === s.workspaces[index].projectId
+        const sibling = remaining.slice(index).find(inProject) ?? remaining.filter(inProject).at(-1)
+        activeWorkspaceId = sibling?.id ?? remaining[Math.min(index, remaining.length - 1)]?.id ?? ''
       }
       return { workspaces: remaining, activeWorkspaceId }
     }),
 
   moveWorkspace: (fromId, toId) =>
     set((s) => {
-      if (fromId === toId) return {}
-      const from = s.workspaces.findIndex((w) => w.id === fromId)
-      const to = s.workspaces.findIndex((w) => w.id === toId)
-      if (from === -1 || to === -1) return {}
-      return { workspaces: arrayMove(s.workspaces, from, to) }
+      if (fromId === toId) return s
+      const source = s.workspaces.find((w) => w.id === fromId)
+      if (!source) return s
+      const siblings = s.workspaces.filter((w) => w.projectId === source.projectId)
+      const to = siblings.findIndex((w) => w.id === toId)
+      if (to === -1) return s
+      const reordered = arrayMove(siblings, siblings.indexOf(source), to)
+      let i = 0
+      return {
+        workspaces: s.workspaces.map((w) => w.projectId === source.projectId ? reordered[i++] : w)
+      }
     }),
 
   setFocusedLeaf: (leafId) =>
@@ -253,7 +311,7 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
       if (!leaf) return {}
       return {
         activeWorkspaceId: ws.id,
-        welcomeFocused: false,
+        ...closedWelcome,
         workspaces: s.workspaces.map((w) => (w.id === ws.id ? { ...w, focusedLeafId: leaf.id } : w))
       }
     }),
@@ -301,8 +359,15 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
       })
     ),
 
-  resizeSplitNode: (splitId, sizes) =>
-    set((s) => mapActive(s, (w) => ({ ...w, layout: resizeSplit(w.layout, splitId, sizes) }))),
+  resizeSplitNode: (workspaceId, splitId, sizes) =>
+    set((s) => {
+      // Hidden groups may still emit layout callbacks during a workspace switch.
+      if (s.activeWorkspaceId !== workspaceId) return s
+      return mapActive(s, (w) => {
+        const layout = resizeSplit(w.layout, splitId, sizes)
+        return layout === w.layout ? w : { ...w, layout }
+      })
+    }),
 
   // An explicit selection starts a fresh session, even for the same agent.
   setPaneAgent: (leafId, agentId) =>

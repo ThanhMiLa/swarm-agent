@@ -40,15 +40,15 @@ const DEFAULT_TERMINAL_COUNT = 2
 const CODING_TEMPLATES = TEMPLATES.filter((t) => t.command !== null)
 
 /**
- * Welcome page shown while creating a workspace (or when none exist). A
- * two-panel composer: left column picks a working folder and shows recent
- * folders; right column sets the terminal count via tiles, lets the user
- * assign AI agent quantities via steppers, shows a live layout preview, and
- * has the Create button. Creating a workspace closes Welcome via the store.
+ * Shared composer for creating a project with its first workspace or adding
+ * another workspace to an existing project, which fixes the working folder.
  */
 export function Welcome(): ReactElement {
+  const project = useAppStore((s) => s.projects.find((p) => p.id === s.welcomeProjectId))
+  const createProject = useAppStore((s) => s.createProject)
   const createWorkspace = useAppStore((s) => s.createWorkspace)
-  const folder = useAppStore((s) => s.welcomeFolder)
+  const draftFolder = useAppStore((s) => s.welcomeFolder)
+  const folder = project?.cwd ?? draftFolder
   const setFolder = useAppStore((s) => s.setWelcomeFolder)
   const recents = useRecentsStore((s) => s.recents)
   const addRecentFolder = useRecentsStore((s) => s.add)
@@ -71,10 +71,13 @@ export function Welcome(): ReactElement {
 
   // Pre-fill the home directory on mount, unless a folder is already chosen.
   useEffect(() => {
+    if (project) return
+    let cancelled = false
     void getHomeDir().then((home) => {
-      if (useAppStore.getState().welcomeFolder === '') setFolder(home)
+      if (!cancelled && useAppStore.getState().welcomeFolder === '') setFolder(home)
     })
-  }, [setFolder])
+    return () => { cancelled = true }
+  }, [project, setFolder])
 
   // Re-probe installed agent CLIs every time Welcome mounts so a CLI installed
   // while the app runs is picked up without a restart.
@@ -107,7 +110,7 @@ export function Welcome(): ReactElement {
   const agentIds = allocateAgents(terminalCount, counts)
 
   const trimmedFolder = folder.trim()
-  const canCreate = trimmedFolder !== ''
+  const canCreate = project !== undefined || trimmedFolder !== ''
 
   // Resume suggestions for the chosen folder. Fail-open: any error or a
   // slow scan just means the section doesn't render — Create is never gated.
@@ -160,8 +163,13 @@ export function Welcome(): ReactElement {
 
   function submit(): void {
     if (!canCreate) return
-    addRecentFolder(trimmedFolder)
-    createWorkspace({ cwd: trimmedFolder, terminalCount, agentIds, resumePanes })
+    const config = { terminalCount, agentIds, resumePanes }
+    if (project) {
+      createWorkspace(project.id, config)
+    } else {
+      addRecentFolder(trimmedFolder)
+      createProject({ ...config, cwd: trimmedFolder })
+    }
   }
 
   // Document-level Ctrl/⌘+Enter shortcut — fires even when nothing in the
@@ -176,7 +184,7 @@ export function Welcome(): ReactElement {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [trimmedFolder, terminalCount, counts, tickedSessions, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project, trimmedFolder, terminalCount, counts, tickedSessions, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build caption: "4 panes · 2×2 · 2 AI agents · 2 Terminals"
   const aiCount = agentIds.filter((id) => id !== DEFAULT_TEMPLATE_ID).length
@@ -196,15 +204,19 @@ export function Welcome(): ReactElement {
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center px-10 py-6">
       <header className="mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">SwarmAgent</h1>
-        <p className="mt-1 text-base text-muted-foreground">Run many terminals, side by side.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {project ? 'New workspace' : 'New project'}
+        </h1>
+        <p className="mt-1 text-base text-muted-foreground">
+          {project ? `Choose the terminals for a new workspace in ${project.name}.` : 'Choose a folder and set up its first workspace.'}
+        </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
         {/* LEFT: COMPOSE — working folder + recent folders */}
         <section className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card p-4">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Compose
+            {project ? 'Project' : 'Compose'}
           </h2>
 
           {/* Working folder */}
@@ -214,24 +226,31 @@ export function Welcome(): ReactElement {
             </label>
             <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-ring">
               <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                value={folder}
-                onChange={(e) => setFolder(e.target.value)}
-                placeholder="Choose a folder…"
-                spellCheck={false}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-              <Button variant="ghost" size="sm" onClick={() => void browse()}>
-                <FolderSearch className="h-4 w-4" />
-                Browse
-              </Button>
+              {project ? (
+                <span className="min-w-0 flex-1 truncate text-sm" title={folder}>{folder || 'Default directory'}</span>
+              ) : (
+                <>
+                  <input
+                    aria-label="Working folder"
+                    value={folder}
+                    onChange={(e) => setFolder(e.target.value)}
+                    placeholder="Choose a folder…"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => void browse()}>
+                    <FolderSearch className="h-4 w-4" />
+                    Browse
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
           {/* Recent folders — inline list capped at VISIBLE_RECENT_ROWS;
               "Show all" opens the searchable pick-one dialog over the full
               list. */}
-          {visibleRecents.length > 0 && (
+          {!project && visibleRecents.length > 0 && (
             <div className="mt-5">
               <p className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Recent
@@ -380,7 +399,7 @@ export function Welcome(): ReactElement {
                 // Both sides of the 12-pane cap are enforced at the control that
                 // would breach it (this tile picker, and the session checkboxes
                 // via canTickMore) — so totalPaneCount can never exceed maxTiles
-                // and createWorkspace never needs its own clamp.
+                // and the creator never needs its own clamp.
                 const disabled = count + resumePanes.length > maxTiles
                 return (
                   <button
@@ -529,14 +548,14 @@ export function Welcome(): ReactElement {
             </div>
           )}
 
-          {/* Create workspace button */}
+          {/* Create the workspace (and project when choosing a new folder). */}
           <div className="mt-auto">
             <Button
               className="w-full"
               onClick={() => void submit()}
               disabled={!canCreate}
             >
-              Create workspace
+              {project ? 'Create workspace' : 'Create project'}
             </Button>
             <p className="mt-2 text-center text-xs text-muted-foreground">
               {canCreate ? 'Press ⌘↵ / Ctrl+↵ to create' : 'Choose a working folder to continue'}

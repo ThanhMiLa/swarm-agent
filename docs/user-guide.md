@@ -4,17 +4,17 @@ Everything the [README](../README.md) summarises, in detail: workspaces and pane
 running several agents at once, Agent Team,
 settings, keyboard shortcuts, troubleshooting and current limits.
 
-## Create a workspace
+## Create a project and its workspaces
 
-SwarmAgent opens on the **composer**: pick a folder (the working directory for every pane), choose how many terminals, and use the steppers to assign AI agents — **Claude Code**, **Codex**, **OpenCode**, **GitHub Copilot**, **Qwen Code**, **Amp**, **Gemini CLI**, **Cursor Agent**, **Antigravity** or **OMP (Oh My Pi)** — the rest stay plain shells. Agents whose CLI isn't installed show up greyed out. Press `⌘/Ctrl + Enter`.
+SwarmAgent opens the **New project** composer: pick a folder, choose how many terminals, and assign AI agents with the steppers. Unassigned panes are plain shells; unavailable agents are greyed out. Press `⌘/Ctrl + Enter` to create the project and its first workspace.
 
-Agent detection re-runs every time the composer opens, so installing a CLI needs no restart. SwarmAgent keeps **no workspace state between launches** — every start is a clean slate (Settings do persist).
+Use **New workspace** under a project to add another terminal layout in the same folder. Switching workspaces hides the old layout without stopping its terminals; switch back to continue in the same sessions. Agent detection re-runs whenever the composer opens. Projects and workspaces aren't restored after quitting the app (Settings do persist).
 
 ## Panes
 
 - **Split** from the pane header, drag the separator to resize, and drag a header onto another pane to swap the two — shells keep running.
 - Closing a pane closes the gap; closing the last pane closes the workspace.
-- The left navbar lists workspaces (add, rename, reorder) and the current workspace's terminals — click one to jump to it. `⌘/Ctrl + B` hides the sidebar.
+- The sidebar groups terminals under **Project → Workspace → Terminal**. Expand or collapse a branch independently; click a workspace to show its layout or a terminal row to jump to that pane. Terminal rows show the agent logo and name, not the session title. `⌘/Ctrl + B` hides the sidebar.
 - A pane can switch to a different agent, shell or folder from its header menu — note this restarts the shell.
 
 ## Running several agents at once
@@ -27,7 +27,7 @@ An agent pane shows a coloured dot instead of the plain activity dot: **red** �
 
 **Claude Code** panes also receive exact signals from Claude's own hooks, not just from reading the screen. At every launch SwarmAgent merge-writes `swarm-agent --hook` entries into `~/.claude/settings.json` (the same file as the status line; additive — hooks you already have are never touched). That makes a permission prompt turn the dot red the instant it appears and a finished reply clear it at once, while screen reading still fills the gaps — for example a question Claude asks without a permission prompt.
 
-A workspace tab in the navbar rolls this up across all its panes and shows the highest-priority dot — blocked beats done, done beats working, working beats plain activity — but only while that tab is **inactive**; the tab you're looking at never needs a dot. Agent Team lists the connection and activity state of each member.
+Inactive or collapsed workspace rows, and collapsed project rows, show the highest-priority dot across their panes — blocked beats done, done beats working, working beats plain activity. Agent Team lists the connection and activity state of each member.
 
 The sidebar header also shows a small counter across **all** workspaces — a red pill for blocked panes and a green one for panes that finished while you were away. Hover any dot to see how long the pane has been in that state ("Blocked for 4m — needs your input"), and hover the red pill to see the longest wait among them. Click a pill, or press `⌘/Ctrl + Shift + J`, to jump to the next pane that needs you: blocked panes first — the one that has waited longest ahead of the rest — then finished (earliest first), then working, then idle in sidebar order, cycling on repeat presses (and switching workspaces when needed). Landing on a finished pane marks it seen, so the green count drops as you go. Hiding the sidebar hides the counter; the shortcut keeps working.
 
@@ -183,7 +183,7 @@ SwarmAgent configures MCP for Claude Code, Codex, Qwen Code, Antigravity and Ope
 |---|---|
 | `⌘/Ctrl + B` | Show or hide the sidebar |
 | `Esc` | Close Settings |
-| `⌘/Ctrl + Enter` | Create the workspace from the composer |
+| `⌘/Ctrl + Enter` | Create the project or workspace from the composer |
 | `Shift + Enter` | Insert a line break in supported terminal apps and agent prompts |
 | `⌘/Ctrl + C` · `⌘/Ctrl + V` | Copy (when text is selected) · paste |
 | `⌘/Ctrl + Click` | Open a file path in your editor, at that line |
@@ -201,7 +201,7 @@ On macOS the modifier is `⌘`, which deliberately leaves `Ctrl + B` to the term
 
 ## Known limits
 
-- **Nothing is saved between launches** — workspaces, layouts and team runs start fresh. Intentional for now.
+- **Projects, workspaces, layouts and team runs start fresh** when you quit and relaunch the app.
 - **Visual styles** — VS Code Dark Modern and Terminal Black (pure black); a light theme is on the list.
 - **Agent Team membership doesn't survive a pane restart** — re-drag the pane.
 - **Terminal search covers the visible scrollback only** — matches beyond xterm's own buffer, and search-and-replace, aren't available.
