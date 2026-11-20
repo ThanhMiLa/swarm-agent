@@ -32,11 +32,6 @@ has its own identity, so you can assign different work to `codex-1` and
 
 <img src="docs/images/fullscreen-main-desk.png" alt="SwarmAgent workspace with four terminal panes, an Agent Team roster, and a summary of worker results" width="100%">
 
-SwarmAgent sends each worker’s report back to the original leader as soon as
-it can receive it. Open **Runs** to see individual results and delivery status.
-Open **Settings → Run History** to see run counts and clear runs for one
-workspace or all open workspaces.
-
 ## Track token usage
 
 Open **Settings → Token Usage** to review the selected workspace’s input,
