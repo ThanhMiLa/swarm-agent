@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/swarm-agent.png" alt="SwarmAgent logo" width="144" height="144">
+<img src="docs/images/swarm-agent.png" alt="SwarmAgent logo" width="101" height="101">
 
 # SwarmAgent
 
