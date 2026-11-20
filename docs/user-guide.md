@@ -8,7 +8,7 @@ settings, keyboard shortcuts, troubleshooting and current limits.
 
 SwarmAgent opens the **New project** composer: pick a folder, choose how many terminals, and assign AI agents with the steppers. Unassigned panes are plain shells; unavailable agents are greyed out. Press `⌘/Ctrl + Enter` to create the project and its first workspace.
 
-Use **New workspace** under a project to add another terminal layout in the same folder. Switching workspaces hides the old layout without stopping its terminals; switch back to continue in the same sessions. Agent detection re-runs whenever the composer opens. Projects and workspaces aren't restored after quitting the app (Settings do persist).
+Right-click a project (or use its **⋮** menu) and choose **New workspace** to add another terminal layout in the same folder. Use **+** beside the Projects heading to add another project. Switching workspaces hides the old layout without stopping its terminals; switch back to continue in the same sessions. Agent detection re-runs whenever the composer opens. Projects and workspaces aren't restored after quitting the app (Settings do persist).
 
 ## Panes
 

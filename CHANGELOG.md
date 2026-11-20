@@ -5,6 +5,18 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-11-21
+
+### Changed
+
+- Create a project using the **+** beside the Projects heading. Right-click a project or use its **⋮** menu to create a workspace.
+- Right-click a workspace to rename or close it, using the same actions as its **⋮** menu.
+- Suppress the default WebView context menus throughout the app.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.1.5_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.1.4] - 2026-11-21
 
 ### Added

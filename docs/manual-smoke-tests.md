@@ -10,8 +10,12 @@ workspace code. Start with `npm run tauri dev`.
       pane → the tree collapses.
 - [ ] Drag a pane header onto another pane → the two swap, shells stay alive.
 - [ ] Sidebar shows one tree: Project → Workspace → Terminal. Add another workspace with three
-      terminals; it uses the project folder without asking to pick it again. Rename and
+      terminals via the project right-click menu and again via its ⋮ menu; each uses the
+      project folder without asking to pick it again. Add a project using the + in the header.
+      Rename and
       drag-reorder projects and workspaces; a workspace cannot be dragged into another project.
+- [ ] Right-click a project or workspace → its action menu opens. Right-click terminal
+      rows, terminal content, inputs and empty sidebar space → no native WebView menu appears.
 - [ ] Start a long command in one workspace and adjust its split sizes. Switch to a sibling,
       then return: the command is still running and the split sizes and focus are unchanged.
 - [ ] Collapse a workspace or project; its terminals stay alive. Close a workspace and

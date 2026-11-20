@@ -16,6 +16,10 @@ if (typeof window !== 'undefined') {
 // listener covers every scroll container, including terminal viewports.
 installScrollbarActivity()
 
+// Suppress the WebView's browser menus without stopping events: application
+// context menus and terminal mouse handling still receive the right click.
+window.addEventListener('contextmenu', (event) => event.preventDefault(), { capture: true })
+
 // NOTE: intentionally NOT wrapped in <React.StrictMode>. Each TerminalPane owns a
 // real OS pty; StrictMode's dev-only double-mount would spawn a shell, kill it,
 // and spawn another (and run a template's initialCommand twice), and the rapid
