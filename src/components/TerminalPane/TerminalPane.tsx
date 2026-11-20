@@ -59,7 +59,7 @@ export function TerminalPane({
   const globalShellId = useTerminalPrefStore((s) => s.shellId)
   const isDropTarget = useAppStore((s) => s.dropTargetTerminalId === leaf.terminalId)
 
-  const { id: leafId, terminalId } = leaf
+  const { id: leafId, terminalId, agentSelectionVersion } = leaf
 
   const agentTitle = useTerminalTitleStore((s) => s.titles[terminalId])
   // Per-terminal selector: only this pane wakes when ITS number changes, and the
@@ -131,14 +131,14 @@ export function TerminalPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId])
 
-  // Respawn the pty when a resolved value changes after mount. The ref starts at
-  // the mount-time values, so the first run is a no-op (no respawn on mount or
-  // remount); only a genuine agent/path/shell switch triggers a restart.
+  // Respawn on a config change or an explicit agent selection. The ref starts
+  // at the mount-time values so reattaching an existing pty doesn't restart it.
   const appliedRef = useRef({
     cwd: resolvedCwd,
     shellId: resolvedShellId,
     command: resolvedCommand,
-    agentId: resolvedAgentId
+    agentId: resolvedAgentId,
+    agentSelectionVersion
   })
   useEffect(() => {
     const prev = appliedRef.current
@@ -146,7 +146,8 @@ export function TerminalPane({
       prev.cwd === resolvedCwd &&
       prev.shellId === resolvedShellId &&
       prev.command === resolvedCommand &&
-      prev.agentId === resolvedAgentId
+      prev.agentId === resolvedAgentId &&
+      prev.agentSelectionVersion === agentSelectionVersion
     ) {
       return
     }
@@ -154,7 +155,8 @@ export function TerminalPane({
       cwd: resolvedCwd,
       shellId: resolvedShellId,
       command: resolvedCommand,
-      agentId: resolvedAgentId
+      agentId: resolvedAgentId,
+      agentSelectionVersion
     }
     respawnTerminal(terminalId, {
       cwd: resolvedCwd,
@@ -163,10 +165,9 @@ export function TerminalPane({
       workspaceId,
       agentId: resolvedAgentId
     })
-    // A same-id respawn (agent/cwd/shell switch) starts a new session; the old
-    // agent's title no longer describes it. Clear it — the new agent re-titles.
+    // The old title no longer describes the new session.
     useTerminalTitleStore.getState().clearTitle(terminalId)
-  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, resolvedAgentId, workspaceId])
+  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, resolvedAgentId, agentSelectionVersion, workspaceId])
 
   // Pull keyboard focus into xterm when this pane becomes the focused one.
   useEffect(() => {

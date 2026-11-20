@@ -21,12 +21,14 @@ export interface LeafNode {
    * derived from this at spawn time.
    */
   agentId?: string
+  /** Increments on explicit agent selection, even when the agent stays the same. */
+  agentSelectionVersion?: number
   /** Per-pane working-directory override. Absent means use the workspace cwd. */
   cwd?: string
   /** Per-pane shell override. Absent means use the global default shell. */
   shellId?: ShellId
   /** Session id this pane resumes at spawn (claude/codex/opencode session
-   *  recorded on disk by the CLI itself). Cleared on agent switch. */
+   *  recorded on disk by the CLI itself). Cleared on agent selection. */
   resumeSessionId?: string
 }
 
@@ -59,7 +61,7 @@ export function updateLeaf(
   patch: Partial<
     Pick<
       LeafNode,
-      'agentId' | 'cwd' | 'shellId' | 'resumeSessionId'
+      'agentId' | 'agentSelectionVersion' | 'cwd' | 'shellId' | 'resumeSessionId'
     >
   >
 ): LayoutNode {

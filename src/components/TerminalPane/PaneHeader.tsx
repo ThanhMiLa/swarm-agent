@@ -138,13 +138,16 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
           >
             {TEMPLATES.map((t) => {
               const available = isTemplateAvailable(t, availability)
+              const current = t.id === agentId
               return (
-                <DropdownMenuItem key={t.id} disabled={!available} onSelect={() => props.onAgentChange(t.id)}>
-                  <Check aria-hidden="true" className={cn('h-3.5 w-3.5', t.id === agentId ? 'opacity-100' : 'opacity-0')} />
+                <DropdownMenuItem key={t.id} disabled={!available} textValue={t.name} onSelect={() => props.onAgentChange(t.id)}>
+                  <Check aria-hidden="true" className={cn('h-3.5 w-3.5', current ? 'opacity-100' : 'opacity-0')} />
                   <AgentIcon template={t} className="h-4 w-4 shrink-0" />
                   <span>{t.name}</span>
-                  {!available && (
-                    <span className="ml-auto pl-3 text-xs text-muted-foreground">Not installed</span>
+                  {(!available || current) && (
+                    <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                      {available ? 'Restart' : 'Not installed'}
+                    </span>
                   )}
                 </DropdownMenuItem>
               )

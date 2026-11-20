@@ -6,7 +6,7 @@
 
 ### Desktop workspace for multi-agent coding
 
-[![Version](https://img.shields.io/badge/version-0.1.1-22c55e)](CHANGELOG.md#011---2026-11-20)
+[![Version](https://img.shields.io/badge/version-0.1.2-22c55e)](CHANGELOG.md#012---2026-11-20)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tauri/tauri-original.svg" width="20" height="20" alt="Tauri"> <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2">

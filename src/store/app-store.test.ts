@@ -362,6 +362,42 @@ describe('setPaneAgent', () => {
     const leaf = collectLeaves(activeWorkspace(store).layout).find((l) => l.id === leafId)
     expect(leaf?.agentId).toBe('codex')
   })
+
+  it('requests a restart on every reselection without changing pane identity or overrides', () => {
+    const store = storeWithWorkspace({
+      ...SINGLE_TERMINAL,
+      terminalCount: 2,
+      agentIds: ['codex', 'terminal']
+    })
+    const { setPaneAgent, setPaneCwd, setPaneShell } = store.getState()
+    const leafId = activeWorkspace(store).focusedLeafId
+    setPaneCwd(leafId, 'D:/elsewhere')
+    setPaneShell(leafId, 'wsl')
+    const [original, sibling] = collectLeaves(activeWorkspace(store).layout)
+
+    for (const version of [1, 2]) {
+      setPaneAgent(leafId, 'codex')
+      const [selected, untouched] = collectLeaves(activeWorkspace(store).layout)
+      expect(selected).toEqual({ ...original, agentSelectionVersion: version })
+      expect(untouched).toBe(sibling)
+    }
+  })
+
+  it('clears the resume session when reselecting the same agent', () => {
+    const cwd = 'C:/work/codex'
+    const store = storeWithWorkspace({
+      ...SINGLE_TERMINAL,
+      resumePanes: [{ agentId: 'codex', sessionId: 'fe845bc6-6932-4459-8fb6-cdd0e7c6cc84', cwd }]
+    })
+    const [, resumed] = collectLeaves(activeWorkspace(store).layout)
+    store.getState().setPaneAgent(resumed.id, 'codex')
+    const [, selected] = collectLeaves(activeWorkspace(store).layout)
+    expect(selected).toEqual({
+      ...resumed,
+      resumeSessionId: undefined,
+      agentSelectionVersion: 1
+    })
+  })
 })
 
 describe('setPaneCwd', () => {

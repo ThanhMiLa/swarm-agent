@@ -40,6 +40,10 @@ workspace code. Start with `npm run tauri dev`.
       that pane's shell.
 - [ ] **Shell switch:** pick another shell in the pane header → that pane
       respawns with it, other panes are untouched.
+- [ ] **Agent restart:** pick the checked agent in the pane header (marked
+      **Restart**) → its current process stops and a fresh session opens in
+      the same pane with the same folder and shell. Repeat; other panes are
+      untouched.
 - [ ] **Keyboard focus:** click the titlebar / a tab / a pane header, then type
       immediately → characters reach the terminal; Tab triggers shell
       completion instead of walking the focus ring.
@@ -129,8 +133,8 @@ workspace code. Start with `npm run tauri dev`.
 - [ ] Folder with no sessions → no "Resume sessions" section, composer
       otherwise unchanged.
 - [ ] Uninstall/rename an agent CLI → its sessions disappear from the list.
-- [ ] Switch agent on a resume pane via the header dropdown → pane respawns
-      fresh (no --resume in the typed command).
+- [ ] Reselect the current agent or switch agents on a resume pane via the
+      header dropdown → pane respawns fresh (no resume arguments).
 
 ## Agent roster (per agent, requires that CLI installed)
 

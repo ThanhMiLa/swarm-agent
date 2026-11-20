@@ -304,18 +304,21 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
   resizeSplitNode: (splitId, sizes) =>
     set((s) => mapActive(s, (w) => ({ ...w, layout: resizeSplit(w.layout, splitId, sizes) }))),
 
-  // An agent switch respawns the pty; replaying a brief written for another
-  // agent would be wrong, so a pending prompt is dropped along with it. A
-  // resume session id is meaningless under another agent too — clear it.
+  // An explicit selection starts a fresh session, even for the same agent.
   setPaneAgent: (leafId, agentId) =>
     set((s) =>
-      mapActive(s, (w) => ({
-        ...w,
-        layout: updateLeaf(w.layout, leafId, {
-          agentId,
-          resumeSessionId: undefined
-        })
-      }))
+      mapActive(s, (w) => {
+        const leaf = findLeaf(w.layout, leafId)
+        if (!leaf) return w
+        return {
+          ...w,
+          layout: updateLeaf(w.layout, leafId, {
+            agentId,
+            agentSelectionVersion: (leaf.agentSelectionVersion ?? 0) + 1,
+            resumeSessionId: undefined
+          })
+        }
+      })
     ),
 
   setPaneCwd: (leafId, cwd) =>

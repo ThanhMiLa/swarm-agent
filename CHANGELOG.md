@@ -5,6 +5,21 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-11-20
+
+### Fixed
+
+- Selecting the current agent in a pane now restarts it in a fresh session instead of doing nothing. The pane keeps its folder and shell; other panes are unaffected.
+- Restarting a resumed session starts fresh instead of reopening the old conversation.
+
+### Changed
+
+- The selected agent is marked **Restart** in the pane's agent menu.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.1.2_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.1.1] - 2026-11-20
 
 ### Fixed
@@ -71,6 +86,7 @@ Initial release of **SwarmAgent** — one workspace for your coding agents.
 
 - **macOS (Apple Silicon / `aarch64`)**: `SwarmAgent_0.0.1_aarch64.dmg` (unsigned / ad-hoc signed local build)
 
+[0.1.2]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/ThanhMiLa/swarm-agent/releases/tag/v0.0.2
