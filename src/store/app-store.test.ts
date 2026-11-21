@@ -474,7 +474,7 @@ describe('setPaneAgent', () => {
     for (const version of [1, 2]) {
       setPaneAgent(leafId, 'codex')
       const [selected, untouched] = collectLeaves(activeWorkspace(store).layout)
-      expect(selected).toEqual({ ...original, agentSelectionVersion: version })
+      expect(selected).toEqual({ ...original, agentSelectionVersion: version, needsConversationChoice: false })
       expect(untouched).toBe(sibling)
     }
   })
@@ -491,6 +491,8 @@ describe('setPaneAgent', () => {
     expect(selected).toEqual({
       ...resumed,
       resumeSessionId: undefined,
+      observedConversation: undefined,
+      needsConversationChoice: false,
       agentSelectionVersion: 1
     })
   })

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { ChevronRight, Folder, FolderOpen, MoreVertical, PanelsTopLeft, Pencil, Plus, Settings, X } from 'lucide-react'
 import { DndContext, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
@@ -7,7 +7,6 @@ import { confirm } from '@tauri-apps/plugin-dialog'
 import { GuardedPointerSensor } from '@/lib/dnd-sensors'
 import { collectLeaves, type LeafNode } from '@/lib/layout-tree'
 import { useAppStore, type Project, type Workspace } from '@/store/app-store'
-import { useNavbarVisibilityStore } from '@/store/navbar-visibility-store'
 import { useTerminalActivityStore } from '@/store/terminal-activity-store'
 import { useAgentStateStore } from '@/store/agent-state-store'
 import { displayState, workspaceDot } from '@/lib/agent-state/rollup'
@@ -23,9 +22,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { TerminalList } from './TerminalList'
+import { ProjectsSidebarFrame } from './ProjectsSidebarFrame'
 import { UpdateButton } from './UpdateButton'
 import { getAppVersion } from '@/tauri/app'
-import { beginLayoutTransition, endLayoutTransition } from '@/lib/terminal-registry'
 
 interface NavbarProps {
   settingsOpen: boolean
@@ -41,15 +40,6 @@ const branchCollision: CollisionDetection = (args) => closestCenter({
 })
 
 export function Navbar({ settingsOpen, onToggleSettings }: NavbarProps): ReactElement {
-  const visible = useNavbarVisibilityStore((s) => s.visible)
-  const previousVisible = useRef(visible)
-  const layoutTransition = useRef(0)
-  useLayoutEffect(() => {
-    if (previousVisible.current === visible) return
-    previousVisible.current = visible
-    layoutTransition.current = beginLayoutTransition(220)
-  }, [visible])
-
   const projects = useAppStore((s) => s.projects)
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspaceId = useAppStore((s) => s.welcomeFocused ? '' : s.activeWorkspaceId)
@@ -76,96 +66,78 @@ export function Navbar({ settingsOpen, onToggleSettings }: NavbarProps): ReactEl
   }
 
   return (
-    <nav
-      aria-label="Projects"
-      aria-hidden={!visible}
-      inert={!visible}
-      data-focus-return
-      style={{ width: visible ? 'var(--workspace-sidebar-width)' : 0 }}
-      onTransitionEnd={(e) => {
-        if (e.target === e.currentTarget && e.propertyName === 'width') endLayoutTransition(layoutTransition.current)
-      }}
-      className={cn(
-        'h-full shrink-0 overflow-hidden border-r bg-card transition-[width,border-color] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
-        visible ? 'border-border' : 'border-transparent'
-      )}
-    >
-      <div className={cn(
-        'flex h-full w-[var(--workspace-sidebar-width)] flex-col transition-[transform,opacity] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-[transform,opacity] motion-reduce:transition-none',
-        visible ? 'translate-x-0 opacity-100' : '-translate-x-4 opacity-0'
-      )}>
-        <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/80">Projects</p>
-          <div className="flex items-center gap-1">
-            <AttentionBadge />
-            {welcomeFocused && projects.length > 0 && (
-              <button
-                type="button"
-                aria-label="Close composer"
-                title="Close composer"
-                onClick={closeWelcome}
-                className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+    <ProjectsSidebarFrame>
+      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/80">Projects</p>
+        <div className="flex items-center gap-1">
+          <AttentionBadge />
+          {welcomeFocused && projects.length > 0 && (
             <button
               type="button"
-              aria-label="New project"
-              title="New project"
-              onClick={() => openWelcome()}
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground',
-                welcomeFocused && welcomeProjectId === null && 'bg-accent text-accent-foreground'
-              )}
+              aria-label="Close composer"
+              title="Close composer"
+              onClick={closeWelcome}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              <Plus className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          <DndContext sensors={sensors} collisionDetection={branchCollision} onDragEnd={handleDragEnd}>
-            <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              <ul className="space-y-1">
-                {projects.map((project) => (
-                  <ProjectItem
-                    key={project.id}
-                    project={project}
-                    workspaces={workspaces.filter((w) => w.projectId === project.id)}
-                    activeWorkspaceId={activeWorkspaceId}
-                    composing={welcomeFocused && welcomeProjectId === project.id}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-        </div>
-
-        <div className="shrink-0 space-y-0.5 border-t border-border p-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleSettings}
-            className={cn(
-              'w-full justify-start',
-              settingsOpen
-                ? 'bg-accent text-accent-foreground hover:bg-accent'
-                : 'text-muted-foreground'
-            )}
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </Button>
-          <UpdateButton />
-          {version && (
-            <p className="mt-1 border-t border-border pt-2 text-center text-[11px] tracking-wider text-muted-foreground/70">
-              v{version}
-            </p>
           )}
+          <button
+            type="button"
+            aria-label="New project"
+            title="New project"
+            onClick={() => openWelcome()}
+            className={cn(
+              'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground',
+              welcomeFocused && welcomeProjectId === null && 'bg-accent text-accent-foreground'
+            )}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
       </div>
-    </nav>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <DndContext sensors={sensors} collisionDetection={branchCollision} onDragEnd={handleDragEnd}>
+          <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            <ul className="space-y-1">
+              {projects.map((project) => (
+                <ProjectItem
+                  key={project.id}
+                  project={project}
+                  workspaces={workspaces.filter((w) => w.projectId === project.id)}
+                  activeWorkspaceId={activeWorkspaceId}
+                  composing={welcomeFocused && welcomeProjectId === project.id}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      </div>
+
+      <div className="shrink-0 space-y-0.5 border-t border-border p-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleSettings}
+          className={cn(
+            'w-full justify-start',
+            settingsOpen
+              ? 'bg-accent text-accent-foreground hover:bg-accent'
+              : 'text-muted-foreground'
+          )}
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
+          Settings
+        </Button>
+        <UpdateButton />
+        {version && (
+          <p className="mt-1 border-t border-border pt-2 text-center text-[11px] tracking-wider text-muted-foreground/70">
+            v{version}
+          </p>
+        )}
+      </div>
+    </ProjectsSidebarFrame>
   )
 }
 

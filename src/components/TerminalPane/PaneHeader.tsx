@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Folder, Terminal as ShellIcon, Check, Columns2, Rows2, X } from 'lucide-react'
+import { Folder, Terminal as ShellIcon, Check, Columns2, History, Rows2, X } from 'lucide-react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { AgentIcon } from '@/components/AgentIcon'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,7 @@ interface PaneHeaderProps {
   /** Agent-set title (via the terminal.set_title MCP tool); falls back to the agent name. */
   agentTitle?: string
   onAgentChange: (id: string) => void
+  onChooseConversation: () => void
   onShellChange: (id: ShellId) => void
   onChoosePath: () => void
   onResetPath: () => void
@@ -135,8 +136,14 @@ export function PaneHeader(props: PaneHeaderProps): React.ReactElement {
           <DropdownMenuContent
             align="start"
             className="max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
-          >
-            {TEMPLATES.map((t) => {
+            >
+              {agent.resume && (
+                <DropdownMenuItem onSelect={props.onChooseConversation}>
+                  <History className="h-4 w-4" />
+                  Resume a conversation…
+                </DropdownMenuItem>
+              )}
+              {TEMPLATES.map((t) => {
               const available = isTemplateAvailable(t, availability)
               const current = t.id === agentId
               return (

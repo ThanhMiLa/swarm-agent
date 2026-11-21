@@ -15,6 +15,7 @@ export interface SessionSink {
   write: (data: string, callback?: () => void) => void
   /** One activity notification per PTY message, independent of parser slicing. */
   onOutput?: () => void
+  onConversation?: (data: Extract<PtyOut, { type: 'conversation' }>['payload']) => void
 }
 
 /** Tauri bridge functions, injected so the session is testable without Tauri. */
@@ -261,7 +262,11 @@ export class TerminalSession {
           return // preserve the error unless the user explicitly requested Retry
         }
         if (!fresh()) return
-        if (msg.type === 'data') {
+        if (msg.type === 'conversation') {
+          if (!exited && !this.pendingRespawn && options.agentId === msg.payload.agentId) {
+            this.sink.onConversation?.(msg.payload)
+          }
+        } else if (msg.type === 'data') {
           const { flowId, data, byteLen } =
             typeof msg.payload === 'string'
               ? { flowId: 0, data: msg.payload, byteLen: undefined }

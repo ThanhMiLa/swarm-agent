@@ -2,6 +2,8 @@ import { invoke, Channel } from '@tauri-apps/api/core'
 import type { ShellId } from '@/lib/terminal-pref'
 import { TerminalWriteQueue } from '@/lib/terminal-write-queue'
 
+export const waitForAgentRuntime = (): Promise<void> => invoke('wait_for_agent_runtime')
+
 const inputQueue = new TerminalWriteQueue()
 const inputTokens = new Map<string, string>()
 
@@ -19,6 +21,7 @@ export type PtyExit = {
 
 export type PtyOut =
   | { type: 'data'; payload: string | PtyData }
+  | { type: 'conversation'; payload: { agentId: string; sessionId: string; cwd?: string | null } }
   | { type: 'exit'; payload: { exitCode: number; flowId?: number } }
 
 export interface CreateTerminalOptions {

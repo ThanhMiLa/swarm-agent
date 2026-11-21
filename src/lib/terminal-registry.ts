@@ -246,6 +246,11 @@ export function getTerminalBenchmarkHandle(id: string) {
 let layoutTransitionTimer: ReturnType<typeof setTimeout> | null = null
 let layoutRefitRaf: number | null = null
 let layoutTransitionGeneration = 0
+let layoutRefitHolds = 0
+
+function layoutRefitPaused(): boolean {
+  return layoutRefitHolds > 0 || layoutTransitionTimer !== null
+}
 
 function cancelEntryRefit(entry: Entry): void {
   if (entry.refitRaf === undefined) return
@@ -254,7 +259,7 @@ function cancelEntryRefit(entry: Entry): void {
 }
 
 function scheduleLayoutRefit(): void {
-  if (layoutRefitRaf !== null) return
+  if (layoutRefitPaused() || layoutRefitRaf !== null) return
   // A final layout fit supersedes any observer callbacks queued this frame.
   for (const entry of entries.values()) cancelEntryRefit(entry)
   layoutRefitRaf = requestAnimationFrame(() => {
@@ -263,15 +268,32 @@ function scheduleLayoutRefit(): void {
   })
 }
 
-/** Freeze terminal reflow while chrome animates; fit only the settled layout. */
-export function beginLayoutTransition(durationMs = 220): number {
-  const generation = ++layoutTransitionGeneration
-  if (layoutTransitionTimer !== null) clearTimeout(layoutTransitionTimer)
+function cancelPendingLayoutRefits(): void {
   if (layoutRefitRaf !== null) {
     cancelAnimationFrame(layoutRefitRaf)
     layoutRefitRaf = null
   }
   for (const entry of entries.values()) cancelEntryRefit(entry)
+}
+
+/** Keep a continuous resize from reflowing terminals until the gesture ends. */
+export function suspendLayoutRefits(): () => void {
+  layoutRefitHolds++
+  cancelPendingLayoutRefits()
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    layoutRefitHolds--
+    scheduleLayoutRefit()
+  }
+}
+
+/** Freeze terminal reflow while chrome animates; fit only the settled layout. */
+export function beginLayoutTransition(durationMs = 220): number {
+  const generation = ++layoutTransitionGeneration
+  if (layoutTransitionTimer !== null) clearTimeout(layoutTransitionTimer)
+  cancelPendingLayoutRefits()
   // Backstop for interrupted transitions and prefers-reduced-motion (no event).
   layoutTransitionTimer = setTimeout(() => {
     layoutTransitionTimer = null
@@ -318,7 +340,7 @@ function safeFit(entry: Entry): boolean {
 
 /** Re-fit one terminal and push the new size to its pty only when it changed. */
 function refitEntry(id: string, entry: Entry): void {
-  if (layoutTransitionTimer !== null) return
+  if (layoutRefitPaused()) return
   // Never fit against a hidden/occluded layout: the dims measured there are
   // garbage (FitAddon's 2×1 floor) and would be pushed to the pty, making a
   // running TUI redraw at 2 columns. The focus/visibility refit in App.tsx
@@ -963,7 +985,10 @@ function getOrCreate(id: string): Entry {
         activityTracker.notify(id)
         entries.get(id)?.detector?.noteOutput()
       },
-      write: (data, callback) => term.write(data, callback)
+      write: (data, callback) => term.write(data, callback),
+      onConversation: ({ agentId, sessionId, cwd }) => {
+        useAppStore.getState().recordPaneConversation(id, agentId, sessionId, cwd ?? undefined)
+      }
     },
     { createTerminal, killTerminal, ackTerminalOutput }
   )
@@ -1041,7 +1066,7 @@ export function attachTerminal(id: string, container: HTMLElement, config: Attac
   entry.observer?.disconnect()
   cancelEntryRefit(entry)
   entry.observer = new ResizeObserver(() => {
-    if (layoutTransitionTimer !== null || layoutRefitRaf !== null || entry.refitRaf !== undefined) return
+    if (layoutRefitPaused() || layoutRefitRaf !== null || entry.refitRaf !== undefined) return
     entry.refitRaf = requestAnimationFrame(() => {
       entry.refitRaf = undefined
       refitEntry(id, entry)

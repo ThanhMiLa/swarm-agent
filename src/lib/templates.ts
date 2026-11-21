@@ -27,7 +27,7 @@ const OMP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{5,63}$/
 
 /** Which backend store scanner (src-tauri/src/sessions/) feeds the composer's
  *  "Resume sessions" list for this agent. The Rust side mirrors these tags. */
-export type SessionScannerKind = 'claude-jsonl' | 'codex-rollout' | 'opencode-cli' | 'qwen-chats'
+export type SessionScannerKind = 'claude-jsonl' | 'codex-rollout' | 'antigravity-sqlite' | 'opencode-cli' | 'qwen-chats'
 
 export interface TemplateResume {
   /** Exact session-id shape this CLI emits. */
@@ -86,7 +86,8 @@ export const TEMPLATES: WorkspaceTemplate[] = [
     command: 'agy --dangerously-skip-permissions',
     executable: 'agy',
     icon: antigravityIcon,
-    resume: { idPattern: UUID_RE, buildCommand: (base, id) => `${base} --conversation ${id}` }
+    resume: { idPattern: UUID_RE, buildCommand: (base, id) => `${base} --conversation ${id}` },
+    sessionScanner: 'antigravity-sqlite'
   },
   {
     id: 'opencode',

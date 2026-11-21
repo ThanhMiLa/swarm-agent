@@ -5,6 +5,24 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-21
+
+### Added
+
+- Restore projects, workspaces, split layouts, and selected panes after quitting.
+- Save exact conversation IDs per pane to resume Claude Code, Codex, OpenCode v2, and Antigravity sessions. When no ID is known, choose a conversation or start a new one rather than guessing.
+- Resume a conversation from the pane's agent menu and browse Antigravity sessions.
+- Resize the projects sidebar.
+
+### Notes
+
+- Codex session capture requires trusting the SwarmAgent hooks; Antigravity captures an ID after a user message.
+- Terminal processes and Agent Team runs are not restored. No shell commands or prompts are replayed.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.0_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
+
 ## [0.1.6] - 2026-11-21
 
 ### Changed

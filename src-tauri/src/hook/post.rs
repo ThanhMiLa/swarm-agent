@@ -25,8 +25,12 @@ use crate::statusline::probe::{parse_http_response, status_addr};
 /// reason as the probe: the server is on an ephemeral one, and a bare host is a
 /// malformed Host header for anything but :80.
 pub fn build_request(authority: &str, token: &str, body: &str) -> String {
+    json_request(authority, token, "/hook", body)
+}
+
+fn json_request(authority: &str, token: &str, path: &str, body: &str) -> String {
     format!(
-        "POST /hook HTTP/1.1\r\nHost: {authority}\r\nAuthorization: Bearer {token}\r\n\
+        "POST {path} HTTP/1.1\r\nHost: {authority}\r\nAuthorization: Bearer {token}\r\n\
          Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     )
@@ -37,10 +41,23 @@ pub fn build_request(authority: &str, token: &str, body: &str) -> String {
 /// anyway; the bool exists for tests. Deliberately `let … else` rather than `?`:
 /// there is no error to propagate, only "did the signal land".
 pub fn post_signal(mcp_url: &str, token: &str, signal: Signal, timeout: Duration) -> bool {
+    post_json(mcp_url, token, "/hook", &HookBody { signal }, timeout)
+}
+
+pub(crate) fn post_json(
+    mcp_url: &str,
+    token: &str,
+    path: &'static str,
+    value: &impl serde::Serialize,
+    timeout: Duration,
+) -> bool {
     // A garbage SWARM_AGENT_MCP_URL is an env problem: bail before any socket work.
-    let Some((_host, authority)) = status_addr(mcp_url) else {
+    let Some((host, authority)) = status_addr(mcp_url) else {
         return false;
     };
+    if path == "/conversation" && host != "127.0.0.1" {
+        return false;
+    }
     let Some(addr) = authority.to_socket_addrs().ok().and_then(|mut a| a.next()) else {
         return false;
     };
@@ -55,10 +72,14 @@ pub fn post_signal(mcp_url: &str, token: &str, signal: Signal, timeout: Duration
 
     // Serialising an enum cannot fail, but the contract is "never panic": a
     // panic is a non-zero exit, which Claude Code surfaces as a hook failure.
-    let Ok(body) = serde_json::to_string(&HookBody { signal }) else {
+    let Ok(body) = serde_json::to_string(value) else {
         return false;
     };
-    let req = build_request(&authority, token, &body);
+    let req = if path == "/hook" {
+        build_request(&authority, token, &body)
+    } else {
+        json_request(&authority, token, path, &body)
+    };
     if stream.write_all(req.as_bytes()).is_err() || stream.flush().is_err() {
         return false;
     }
@@ -172,6 +193,30 @@ mod tests {
             req.ends_with("\r\n\r\n{\"signal\":\"blocked\"}"),
             "req was {req:?}"
         );
+    }
+
+    #[test]
+    fn conversation_hook_sends_only_identity_to_the_pane_endpoint() {
+        let (url, server) = serve_once(
+            b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        let msg = crate::sessions::tracking::from_hook(
+            "claude-code",
+            r#"{"hook_event_name":"SessionStart","session_id":"018f3b2a-7c1d-4e0a-9b2f-1a2b3c4d5e6f","cwd":"/repo","prompt":"private text"}"#,
+        )
+        .unwrap();
+        assert!(post_json(
+            &url,
+            "pane-token",
+            "/conversation",
+            &msg,
+            Duration::from_millis(500)
+        ));
+        let request = server.join().unwrap();
+        assert!(request.starts_with("POST /conversation HTTP/1.1\r\n"));
+        assert!(request.contains("Authorization: Bearer pane-token"));
+        assert!(request.contains("018f3b2a-7c1d-4e0a-9b2f-1a2b3c4d5e6f"));
+        assert!(!request.contains("private text"));
     }
 
     #[test]

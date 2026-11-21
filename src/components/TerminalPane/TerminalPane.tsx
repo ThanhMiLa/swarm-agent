@@ -13,6 +13,7 @@ import { PaneHeader } from './PaneHeader'
 import { agentCommand, DEFAULT_TEMPLATE_ID } from '@/lib/templates'
 import { shellFlavor } from '@/lib/shell-quoting'
 import { buildResumeCommand } from '@/lib/resume-command'
+import { ConversationPicker } from './ConversationPicker'
 import { isWindowsPlatform } from '@/lib/platform'
 import { pickDirectory } from '@/tauri/dialog'
 import { cn } from '@/lib/utils'
@@ -56,6 +57,7 @@ export function TerminalPane({
   const setPaneAgent = useAppStore((s) => s.setPaneAgent)
   const setPaneCwd = useAppStore((s) => s.setPaneCwd)
   const setPaneShell = useAppStore((s) => s.setPaneShell)
+  const startPaneConversation = useAppStore((s) => s.startPaneConversation)
   const globalShellId = useTerminalPrefStore((s) => s.shellId)
   const isDropTarget = useAppStore((s) => s.dropTargetTerminalId === leaf.terminalId)
 
@@ -96,7 +98,7 @@ export function TerminalPane({
   const resolvedShellId = leaf.shellId ?? globalShellId
   const resolvedAgentId = leaf.agentId ?? DEFAULT_TEMPLATE_ID
   const baseCommand = agentCommand(resolvedAgentId)
-  const resolvedCommand = (leaf.resumeSessionId
+  const resolvedCommand = leaf.needsConversationChoice ? undefined : (leaf.resumeSessionId
     ? buildResumeCommand(resolvedAgentId, leaf.resumeSessionId)
     : undefined) ?? baseCommand
   // Published to the DOM so the app-level file-drop listener can quote paths
@@ -104,6 +106,9 @@ export function TerminalPane({
   const paneShellFlavor = shellFlavor(resolvedShellId, isWindowsPlatform())
 
   const [status, setStatus] = useState<TerminalStatus>(() => getTerminalStatus(terminalId))
+  const [showConversationPicker, setShowConversationPicker] = useState(false)
+  const pickingConversation = leaf.needsConversationChoice || showConversationPicker
+  const processAgentId = leaf.needsConversationChoice ? DEFAULT_TEMPLATE_ID : resolvedAgentId
 
   // Attach the live terminal to this pane's container and mirror its status.
   // Keyed on terminalId only: remounts (sibling close → tree collapse) re-attach
@@ -117,7 +122,7 @@ export function TerminalPane({
       shellId: resolvedShellId,
       initialCommand: resolvedCommand,
       workspaceId,
-      agentId: resolvedAgentId
+      agentId: processAgentId
     })
     setStatus(getTerminalStatus(terminalId))
     const unsubscribe = subscribeTerminalStatus(terminalId, () =>
@@ -137,7 +142,7 @@ export function TerminalPane({
     cwd: resolvedCwd,
     shellId: resolvedShellId,
     command: resolvedCommand,
-    agentId: resolvedAgentId,
+    agentId: processAgentId,
     agentSelectionVersion
   })
   useEffect(() => {
@@ -146,7 +151,7 @@ export function TerminalPane({
       prev.cwd === resolvedCwd &&
       prev.shellId === resolvedShellId &&
       prev.command === resolvedCommand &&
-      prev.agentId === resolvedAgentId &&
+      prev.agentId === processAgentId &&
       prev.agentSelectionVersion === agentSelectionVersion
     ) {
       return
@@ -155,7 +160,7 @@ export function TerminalPane({
       cwd: resolvedCwd,
       shellId: resolvedShellId,
       command: resolvedCommand,
-      agentId: resolvedAgentId,
+      agentId: processAgentId,
       agentSelectionVersion
     }
     respawnTerminal(terminalId, {
@@ -163,16 +168,16 @@ export function TerminalPane({
       shellId: resolvedShellId,
       initialCommand: resolvedCommand,
       workspaceId,
-      agentId: resolvedAgentId
+      agentId: processAgentId
     })
     // The old title no longer describes the new session.
     useTerminalTitleStore.getState().clearTitle(terminalId)
-  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, resolvedAgentId, agentSelectionVersion, workspaceId])
+  }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, processAgentId, agentSelectionVersion, workspaceId])
 
   // Pull keyboard focus into xterm when this pane becomes the focused one.
   useEffect(() => {
-    if (isFocused) focusTerminal(terminalId)
-  }, [isFocused, terminalId])
+    if (isFocused && !pickingConversation) focusTerminal(terminalId)
+  }, [isFocused, pickingConversation, terminalId])
 
   async function handleChoosePath(): Promise<void> {
     const dir = await pickDirectory()
@@ -206,7 +211,11 @@ export function TerminalPane({
         shellId={resolvedShellId}
         resolvedCwd={resolvedCwd}
         hasCwdOverride={leaf.cwd !== undefined}
-        onAgentChange={(id) => setPaneAgent(leafId, id)}
+        onAgentChange={(id) => {
+          setShowConversationPicker(false)
+          setPaneAgent(leafId, id)
+        }}
+        onChooseConversation={() => setShowConversationPicker(true)}
         onShellChange={(id) => setPaneShell(leafId, id)}
         onChoosePath={() => void handleChoosePath()}
         onResetPath={() => setPaneCwd(leafId, undefined)}
@@ -221,11 +230,24 @@ export function TerminalPane({
       />
 
       <div className="relative flex-1 overflow-hidden">
-        <div ref={containerRef} className="absolute inset-0" />
+        <div ref={containerRef} inert={pickingConversation} className="absolute inset-0" />
 
         {searchOpen && <SearchOverlay terminalId={terminalId} />}
 
-        {status.kind === 'error' && (
+        {pickingConversation && (
+          <ConversationPicker
+            key={`${resolvedAgentId}:${resolvedCwd}`}
+            agentId={resolvedAgentId}
+            cwd={resolvedCwd}
+            onChoose={(id, directory) => {
+              setShowConversationPicker(false)
+              startPaneConversation(terminalId, id, directory)
+            }}
+            onCancel={leaf.needsConversationChoice ? undefined : () => setShowConversationPicker(false)}
+          />
+        )}
+
+        {!pickingConversation && status.kind === 'error' && (
           <StatusOverlay
             title="Terminal error"
             detail={status.message}
@@ -233,7 +255,7 @@ export function TerminalPane({
             onAction={() => retryTerminal(terminalId)}
           />
         )}
-        {status.kind === 'exited' && (
+        {!pickingConversation && status.kind === 'exited' && (
           <StatusOverlay
             title="Process exited"
             detail={`Exit code ${status.exitCode}`}

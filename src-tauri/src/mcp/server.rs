@@ -154,6 +154,7 @@ pub fn axum_router(app: AppHandle) -> axum::Router {
         .route_service("/mcp", service)
         .route("/status", get(status_handler))
         .route("/hook", post(hook_handler))
+        .route("/conversation", post(conversation_handler))
         .with_state(app)
 }
 
@@ -172,6 +173,24 @@ fn bearer_header(headers: &HeaderMap) -> &str {
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("")
+}
+
+/// A CLI integration may publish only the ID (and working directory) of its
+/// own PTY. The per-spawn bearer prevents one pane from updating another.
+async fn conversation_handler(
+    AxumState(app): AxumState<AppHandle>,
+    headers: HeaderMap,
+    Json(conversation): Json<crate::sessions::tracking::Conversation>,
+) -> StatusCode {
+    let state = app.state::<AppState>();
+    let Some(session) = state.mcp_session(auth::bearer(bearer_header(&headers))) else {
+        return StatusCode::UNAUTHORIZED;
+    };
+    if crate::sessions::tracking::publish(&state, &session, conversation) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::BAD_REQUEST
+    }
 }
 
 /// Record one context-usage sample for a pane and emit `agent:context` only

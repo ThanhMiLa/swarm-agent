@@ -32,6 +32,10 @@ fn main() {
         swarm_agent_lib::hook::run_cli();
         return;
     }
+    if std::env::args().nth(1).as_deref() == Some("--codex-session-hook") {
+        swarm_agent_lib::hook::run_agent_hook("codex");
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--mcp-stdio") {
         swarm_agent_lib::mcp::bridge::run_cli();
         return;

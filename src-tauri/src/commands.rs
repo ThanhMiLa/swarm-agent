@@ -17,6 +17,18 @@ pub fn create_terminal(
 }
 
 #[tauri::command]
+pub async fn wait_for_agent_runtime(app: AppHandle) {
+    use tauri::Manager;
+    // Restored panes can mount before the loopback listener is ready.
+    for _ in 0..40 {
+        if app.state::<AppState>().mcp_url.get().is_some() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+}
+
+#[tauri::command]
 pub async fn write_terminal(
     state: State<'_, AppState>,
     id: String,
@@ -314,6 +326,8 @@ mod terminal_io_tests {
                 job: None,
 
                 flow: flow.clone(),
+                on_data: None,
+                agent_log_dir: None,
             },
         );
         let input_state = state.clone();
@@ -379,6 +393,8 @@ mod terminal_io_tests {
                 job: None,
 
                 flow: FlowController::new(1000),
+                on_data: None,
+                agent_log_dir: None,
             },
         );
         write_input(

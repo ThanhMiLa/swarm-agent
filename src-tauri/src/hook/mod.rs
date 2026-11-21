@@ -20,9 +20,8 @@
 //!   permission *decision*; on other events it is shown to the user or fed
 //!   back as context. Silence is the only safe output.
 //!
-//! Only `hook_event_name` and `notification_type` are ever deserialised. The
-//! rest of the payload (prompt text, `last_assistant_message`, tool input,
-//! cwd) must not leave the pane, so it is never even read into a struct.
+//! Only lifecycle metadata is deserialised (event, notification, session ID
+//! and cwd). Prompt text, model output and tool input are never forwarded.
 
 pub mod install;
 pub mod post;
@@ -111,6 +110,10 @@ const POST_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 /// runs — a plain CLI that reads stdin, maybe POSTs, and exits 0 no matter
 /// what (see the module doc for why both contracts are non-negotiable).
 pub fn run_cli() {
+    run_agent_hook("claude-code");
+}
+
+pub fn run_agent_hook(agent: &str) {
     use std::io::Read;
 
     // Env first: a Claude run outside SwarmAgent has no session, so exit in
@@ -129,8 +132,19 @@ pub fn run_cli() {
     // Claude's writer side, and a hook error is a visible Claude Code warning.
     let mut raw = String::new();
     let _ = std::io::stdin().read_to_string(&mut raw);
-    if let Some(signal) = signal_from_stdin(&raw) {
-        let _ = post::post_signal(url.trim(), token.trim(), signal, POST_TIMEOUT);
+    if let Some(conversation) = crate::sessions::tracking::from_hook(agent, &raw) {
+        let _ = post::post_json(
+            url.trim(),
+            token.trim(),
+            "/conversation",
+            &conversation,
+            POST_TIMEOUT,
+        );
+    }
+    if agent == "claude-code" {
+        if let Some(signal) = signal_from_stdin(&raw) {
+            let _ = post::post_signal(url.trim(), token.trim(), signal, POST_TIMEOUT);
+        }
     }
 }
 

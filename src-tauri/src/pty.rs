@@ -202,6 +202,7 @@ pub struct PtyExitPayload {
 #[serde(rename_all = "camelCase", tag = "type", content = "payload")]
 pub enum PtyOut {
     Data(PtyDataPayload),
+    Conversation(crate::sessions::tracking::Conversation),
     Exit(PtyExitPayload),
 }
 
@@ -262,6 +263,8 @@ pub struct ManagedTerminal {
     #[cfg(windows)]
     pub job: Option<job::JobHandle>,
     pub flow: FlowController,
+    pub on_data: Option<Channel<PtyOut>>,
+    pub agent_log_dir: Option<tempfile::TempDir>,
 }
 
 impl ManagedTerminal {
@@ -275,6 +278,7 @@ impl ManagedTerminal {
             job.terminate();
         }
         let _ = self.killer.kill();
+        self.agent_log_dir.take();
     }
 }
 
@@ -535,6 +539,26 @@ pub fn spawn_terminal(
     });
     cmd.cwd(&cwd);
     crate::mcp::config::configure_terminal(&mut cmd, options.agent_id.as_deref());
+    if options.agent_id.as_deref() == Some("opencode") {
+        if let Err(err) = crate::sessions::tracking::configure_opencode(app, &mut cmd) {
+            eprintln!("session restore: OpenCode plugin unavailable: {err}");
+        }
+    }
+    let shell_name = std::path::Path::new(&shell)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let agy_log = (options.agent_id.as_deref() == Some("antigravity")
+        && options
+            .initial_command
+            .as_deref()
+            .is_some_and(|s| s.starts_with("agy ")))
+    .then(|| crate::sessions::tracking::antigravity_log_directory().ok())
+    .flatten();
+    if let Some(dir) = &agy_log {
+        cmd.env("SWARM_AGENT_AGY_LOG", dir.path().join("pane.log"));
+    }
     let report_exit = options
         .agent_id
         .as_deref()
@@ -576,8 +600,15 @@ pub fn spawn_terminal(
     let flow = FlowController::new(flow_id);
 
     let startup = options.initial_command.as_deref().map(|command| {
-        crate::mcp::config::private_agent_command(options.agent_id.as_deref(), command)
+        if agy_log.is_some() {
+            crate::sessions::tracking::antigravity_command(command, &shell_name)
+        } else {
+            crate::mcp::config::private_agent_command(options.agent_id.as_deref(), command)
+        }
     });
+    let agy_tracking = agy_log
+        .as_ref()
+        .map(|dir| (dir.path().join("pane.log"), cwd.clone()));
     let writer = Arc::new(Mutex::new(writer));
     state.terminals.lock().unwrap().insert(
         id.clone(),
@@ -594,19 +625,28 @@ pub fn spawn_terminal(
             #[cfg(windows)]
             job,
             flow: flow.clone(),
+            on_data: Some(on_data.clone()),
+            agent_log_dir: agy_log,
         },
     );
+
+    if let Some((file_path, cwd)) = agy_tracking {
+        crate::sessions::tracking::watch_antigravity(
+            app.clone(),
+            crate::agent_team::Session {
+                terminal_id: id.clone(),
+                generation: flow_id,
+            },
+            file_path,
+            cwd,
+        );
+    }
 
     // Run the template's first command (clearing the screen first for the
     // platform default shell so the prompt/echo don't linger above the program).
     if let Some(ic) = startup {
         let exit = if report_exit {
-            let name = std::path::Path::new(&shell)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_ascii_lowercase();
-            match name.as_str() {
+            match shell_name.as_str() {
                 "cmd" => " & \"%SWARM_AGENT_BIN%\" --agent-team-exited",
                 "powershell" | "pwsh" => "; & $env:SWARM_AGENT_BIN --agent-team-exited",
                 _ => "; \"$SWARM_AGENT_BIN\" --agent-team-exited",

@@ -12,7 +12,7 @@ export function isValidSessionId(agentId: string, sessionId: string): boolean {
   const t = templateById(agentId)
   // templateById falls back to the default template for unknown ids.
   if (t.id !== agentId || t.resume === undefined) return false
-  return t.resume.idPattern.test(sessionId)
+  return t.resume.idPattern.exec(sessionId)?.[0] === sessionId
 }
 
 /**

@@ -8,7 +8,11 @@ settings, keyboard shortcuts, troubleshooting and current limits.
 
 SwarmAgent opens the **New project** composer: pick a folder, choose how many terminals, and assign AI agents with the steppers. Unassigned panes are plain shells; unavailable agents are greyed out. Press `⌘/Ctrl + Enter` to create the project and its first workspace.
 
-Right-click a project (or use its **⋮** menu) and choose **New workspace** to add another terminal layout in the same folder. Use **+** beside the Projects heading to add another project. Switching workspaces hides the old layout without stopping its terminals; switch back to continue in the same sessions. Agent detection re-runs whenever the composer opens. Projects and workspaces aren't restored after quitting the app (Settings do persist).
+Right-click a project (or use its **⋮** menu) and choose **New workspace** to add another terminal layout in the same folder. Use **+** beside the Projects heading to add another project. Switching workspaces hides the old layout without stopping its terminals; switch back to continue in the same sessions. Agent detection re-runs whenever the composer opens.
+
+On relaunch, SwarmAgent restores projects, workspaces, the split layout, and the selected pane. It starts fresh terminal processes and resumes conversations by their exact saved IDs. It never reruns typed shell commands, sends prompts, or picks the most recent chat on its own. If a pane has no reliable saved ID, choose a session there or start a new conversation. You can also open **Resume a conversation…** from the agent menu on the pane.
+
+Automatic session tracking covers Claude Code (lifecycle hooks), Codex (review and trust the SwarmAgent hooks using `/hooks`), OpenCode v2 (TUI plugin), and Antigravity (after it records a user message). Other CLIs can resume if the conversation was explicitly selected and the CLI supports resume by ID. SwarmAgent saves only the ID and layout metadata, not chat contents.
 
 ## Panes
 
@@ -201,7 +205,7 @@ On macOS the modifier is `⌘`, which deliberately leaves `Ctrl + B` to the term
 
 ## Known limits
 
-- **Projects, workspaces, layouts and team runs start fresh** when you quit and relaunch the app.
+- **Terminal process state and Agent Team runs aren't restored** after quitting; saved workspace layouts and known conversation IDs are restored.
 - **Visual styles** — VS Code Dark Modern and Terminal Black (pure black); a light theme is on the list.
 - **Agent Team membership doesn't survive a pane restart** — re-drag the pane.
 - **Terminal search covers the visible scrollback only** — matches beyond xterm's own buffer, and search-and-replace, aren't available.

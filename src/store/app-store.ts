@@ -15,6 +15,8 @@ import {
 import type { ShellId } from '@/lib/terminal-pref'
 import { DEFAULT_TEMPLATE_ID } from '@/lib/templates'
 import { projectNameFor } from '@/lib/project-name'
+import { isValidSessionId } from '@/lib/resume-command'
+import { readWorkspaceState, writeWorkspaceState } from '@/lib/workspace-persistence'
 
 export interface Project {
   id: string
@@ -88,6 +90,8 @@ export interface AppActions {
   setPaneAgent: (leafId: string, agentId: string) => void
   setPaneCwd: (leafId: string, cwd: string | undefined) => void
   setPaneShell: (leafId: string, shellId: ShellId) => void
+  startPaneConversation: (terminalId: string, sessionId?: string, cwd?: string) => void
+  recordPaneConversation: (terminalId: string, agentId: string, sessionId: string, cwd?: string) => void
 }
 
 export type AppStore = AppState & AppActions
@@ -380,7 +384,9 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
           layout: updateLeaf(w.layout, leafId, {
             agentId,
             agentSelectionVersion: (leaf.agentSelectionVersion ?? 0) + 1,
-            resumeSessionId: undefined
+            resumeSessionId: undefined,
+            observedConversation: undefined,
+            needsConversationChoice: false
           })
         }
       })
@@ -392,13 +398,58 @@ export const appStoreCreator: StateCreator<AppStore> = (set, get) => ({
         ...w,
         layout: updateLeaf(w.layout, leafId, {
           cwd,
-          resumeSessionId: undefined
+          resumeSessionId: undefined,
+          observedConversation: undefined
         })
       }))
     ),
 
   setPaneShell: (leafId, shellId) =>
-    set((s) => mapActive(s, (w) => ({ ...w, layout: updateLeaf(w.layout, leafId, { shellId }) })))
+    set((s) => mapActive(s, (w) => {
+      const leaf = findLeaf(w.layout, leafId)
+      if (!leaf || leaf.shellId === shellId) return w
+      return { ...w, layout: updateLeaf(w.layout, leafId, {
+        shellId,
+        resumeSessionId: leaf.observedConversation?.id ?? leaf.resumeSessionId,
+        cwd: leaf.observedConversation?.cwd ?? leaf.cwd,
+        observedConversation: undefined
+      }) }
+    })),
+
+  startPaneConversation: (terminalId, sessionId, cwd) => set((s) => {
+    const workspace = selectWorkspaceByTerminalId(s, terminalId)
+    const leaf = workspace && collectLeaves(workspace.layout).find((l) => l.terminalId === terminalId)
+    if (!workspace || !leaf || (sessionId && !isValidSessionId(leaf.agentId ?? DEFAULT_TEMPLATE_ID, sessionId))) return s
+    const layout = updateLeaf(workspace.layout, leaf.id, {
+      resumeSessionId: sessionId,
+      cwd: cwd ?? leaf.cwd,
+      observedConversation: undefined,
+      needsConversationChoice: false,
+      agentSelectionVersion: (leaf.agentSelectionVersion ?? 0) + 1
+    })
+    return { workspaces: s.workspaces.map((w) => w === workspace ? { ...w, layout } : w) }
+  }),
+
+  recordPaneConversation: (terminalId, agentId, sessionId, cwd) => set((s) => {
+    if (!isValidSessionId(agentId, sessionId)) return s
+    const workspace = selectWorkspaceByTerminalId(s, terminalId)
+    const leaf = workspace && collectLeaves(workspace.layout).find((l) => l.terminalId === terminalId)
+    if (!workspace || !leaf || leaf.agentId !== agentId || leaf.needsConversationChoice) return s
+    if (leaf.observedConversation?.id === sessionId && leaf.observedConversation.cwd === cwd) return s
+    const layout = updateLeaf(workspace.layout, leaf.id, { observedConversation: { id: sessionId, cwd } })
+    return { workspaces: s.workspaces.map((w) => w === workspace ? { ...w, layout } : w) }
+  })
 })
 
 export const useAppStore = create<AppStore>()(appStoreCreator)
+
+if (typeof window !== 'undefined') {
+  const saved = readWorkspaceState(window.localStorage)
+  if (saved) useAppStore.setState({ ...saved, welcomeFocused: saved.projects.length === 0 })
+  useAppStore.subscribe((state, previous) => {
+    if (state.projects !== previous.projects || state.workspaces !== previous.workspaces ||
+        state.activeWorkspaceId !== previous.activeWorkspaceId) {
+      writeWorkspaceState(window.localStorage, state)
+    }
+  })
+}

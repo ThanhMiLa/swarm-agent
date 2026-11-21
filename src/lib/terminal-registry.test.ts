@@ -78,6 +78,7 @@ import {
   disposeTerminal,
   endLayoutTransition,
   refitAttachedTerminals,
+  suspendLayoutRefits,
   VSCODE_DARK_THEME
 } from './terminal-registry'
 
@@ -293,6 +294,25 @@ describe('terminal layout refits', () => {
     endLayoutTransition(right)
     frame()
     expect(mocks.fit).toHaveBeenCalledTimes(1)
+  })
+
+  it('fits only after a sidebar resize ends, even if an overlapping animation finishes first', () => {
+    observers[0].callback()
+    const release = suspendLayoutRefits()
+    beginLayoutTransition()
+    vi.advanceTimersByTime(1000)
+    observers[0].callback()
+    refitAttachedTerminals()
+    frame()
+    expect(mocks.fit).not.toHaveBeenCalled()
+    expect(resizeTerminal).not.toHaveBeenCalled()
+
+    release()
+    release()
+    observers[0].callback()
+    frame()
+    expect(mocks.fit).toHaveBeenCalledTimes(1)
+    expect(resizeTerminal).toHaveBeenCalledTimes(1)
   })
 
   it.each(['detach', 'dispose'] as const)('cancels pending observer refits on %s', (action) => {

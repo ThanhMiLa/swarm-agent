@@ -25,6 +25,9 @@ workspace code. Start with `npm run tauri dev`.
       result, `⌘/Ctrl + Enter` creates the project or workspace.
 - [ ] Sidebar terminal rows show agent logo and name even when a session title changes.
       Clicking a row in another workspace activates that workspace and focuses the pane.
+- [ ] Drag the right edge of Projects to resize it. The rail follows the pointer;
+      terminals fit on release without reflowing during the drag. Hide/show keeps
+      its animation and the chosen width; restart restores that width.
 - [ ] Close the window → hides to tray (ptys stay alive); tray → Show restores;
       tray → Quit exits and kills every pty.
 - [ ] The tray/menu-bar icon shows the box-logo mark (macOS: monochrome
@@ -144,6 +147,14 @@ workspace code. Start with `npm run tauri dev`.
       drops to `mcp …` until the new Claude connects.
 
 ## Session resume (composer)
+
+- [ ] Open two panes of the same agent in the same project, each with a different chat. Quit
+      and reopen: both panes resume their own chat by ID and retain the selected pane and split.
+      For Codex, approve just the SwarmAgent hooks via `/hooks`; for Antigravity, send at least
+      one message before quitting.
+- [ ] Restore a pane with no saved ID: it should offer the session picker, not open the newest
+      chat. Pick a session, then Quit/reopen; that exact session should reopen automatically.
+      Restarting or changing an agent should not carry the previous conversation to the new agent.
 
 - [ ] Pick a folder with prior Claude Code activity → "Resume sessions"
       (below Recent) lists them newest first, with agent icon, relative

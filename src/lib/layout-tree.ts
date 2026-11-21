@@ -30,6 +30,10 @@ export interface LeafNode {
   /** Session id this pane resumes at spawn (claude/codex/opencode session
    *  recorded on disk by the CLI itself). Cleared on agent selection. */
   resumeSessionId?: string
+  /** Observed at runtime; updating this must not restart the current PTY. */
+  observedConversation?: { id: string; cwd?: string }
+  /** Restored with no known conversation. Wait for the user to choose. */
+  needsConversationChoice?: boolean
 }
 
 export interface SplitNode {
@@ -61,7 +65,8 @@ export function updateLeaf(
   patch: Partial<
     Pick<
       LeafNode,
-      'agentId' | 'agentSelectionVersion' | 'cwd' | 'shellId' | 'resumeSessionId'
+      'agentId' | 'agentSelectionVersion' | 'cwd' | 'shellId' | 'resumeSessionId' |
+      'observedConversation' | 'needsConversationChoice'
     >
   >
 ): LayoutNode {

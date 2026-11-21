@@ -4,10 +4,12 @@
 //! never to an error the renderer must handle (roadmap doctrine: a display-
 //! only surface may collapse `error` into `absent`).
 
+mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod opencode;
 pub mod qwen;
+pub mod tracking;
 
 use serde::Serialize;
 use std::io::Read;
@@ -132,6 +134,17 @@ pub async fn list_all(folder: String) -> Vec<SessionEntry> {
         }
         if let Some(root) = qwen_projects_root() {
             out.extend(qwen::scan(&root, &scan_folder));
+        }
+        if let Some(home) = home_dir() {
+            for root in ["antigravity-cli", "antigravity"] {
+                out.extend(antigravity::scan(
+                    &home
+                        .join(".gemini")
+                        .join(root)
+                        .join("conversation_summaries.db"),
+                    Path::new(&scan_folder),
+                ));
+            }
         }
         out
     });

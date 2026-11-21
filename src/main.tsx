@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 import './index.css'
 import { installScrollbarActivity } from './lib/scrollbar-activity'
 import { applyStyleToDom, readStoredStyle } from './lib/appearance'
+import { waitForAgentRuntime } from './tauri/terminal'
 
 // Apply the persisted appearance style immediately on startup to avoid any theme flash.
 if (typeof window !== 'undefined') {
@@ -27,7 +28,10 @@ window.addEventListener('contextmenu', (event) => event.preventDefault(), { capt
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('terminalBenchmark')) {
   void import('./lib/benchmark/terminal-benchmark').then(m => m.runTerminalBenchmark())
 } else {
-  void import('./App').then(({ default: App }) => {
+  void Promise.all([
+    import('./App'),
+    waitForAgentRuntime().catch(() => {})
+  ]).then(([{ default: App }]) => {
     ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(<App />)
   })
 }

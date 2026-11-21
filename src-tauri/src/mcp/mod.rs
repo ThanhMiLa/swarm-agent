@@ -27,6 +27,13 @@ pub async fn start(app: AppHandle) -> Result<Arc<str>, String> {
 
     // Prepare CLI configuration before a newly started pane can use this endpoint.
     config::register_codex(&app, &url);
+    if crate::agents::find_agent_binary("codex").is_some() {
+        if let Ok(home) = app.path().home_dir() {
+            if let Err(err) = crate::sessions::tracking::register_codex(&home) {
+                eprintln!("session restore: Codex hook unavailable: {err}");
+            }
+        }
+    }
     config::register_qwen(&app);
     config::register_antigravity(&app);
     app.state::<AppState>()

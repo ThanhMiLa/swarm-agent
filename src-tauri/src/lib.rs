@@ -118,6 +118,7 @@ pub fn run() {
             input_compatibility::get_input_compatibility,
             input_compatibility::set_input_compatibility,
             commands::create_terminal,
+            commands::wait_for_agent_runtime,
             commands::write_terminal,
             commands::write_terminal_bytes,
             commands::ack_terminal_output,

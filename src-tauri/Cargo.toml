@@ -1,6 +1,6 @@
 [package]
 name = "swarm-agent"
-version = "0.1.6"
+version = "0.2.0"
 description = "Desktop terminals and cross-CLI coordination for AI coding agents"
 authors = ["ThanhMiLa"]
 license = "GPL-3.0-only"
@@ -48,6 +48,7 @@ toml_edit = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 ruzstd = "0.7"
 rusqlite = { version = "0.41.0", default-features = false, features = ["bundled", "cache"] }
+tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 # Poll already-available PTY output without changing the shared descriptor flags.
@@ -67,6 +68,3 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_Registry",
   "Win32_System_Threading",
 ] }
-
-[dev-dependencies]
-tempfile = "3"

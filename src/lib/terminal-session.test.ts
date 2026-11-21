@@ -30,6 +30,22 @@ const OPTS = { cols: 80, rows: 24, cwd: '/tmp' }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('TerminalSession', () => {
+  it('accepts conversation metadata only for its current agent and launch', () => {
+    const deps = makeDeps()
+    const onConversation = vi.fn()
+    const session = new TerminalSession('t1', { write: vi.fn(), onConversation }, deps)
+    const payload = { agentId: 'codex', sessionId: 'first' }
+    session.start({ ...OPTS, agentId: 'codex' })
+    deps.emit({ type: 'conversation', payload: { ...payload, agentId: 'claude-code' } })
+    deps.emit({ type: 'conversation', payload })
+    session.respawn({ ...OPTS, agentId: 'codex' })
+    deps.emit({ type: 'conversation', payload: { ...payload, sessionId: 'stale' } })
+    deps.emit({ type: 'exit', payload: { exitCode: 0 } })
+    deps.channels[0]({ type: 'conversation', payload: { ...payload, sessionId: 'old-channel' } })
+    deps.emit({ type: 'conversation', payload: { ...payload, sessionId: 'second' } })
+    expect(onConversation.mock.calls.map(([data]) => data.sessionId)).toEqual(['first', 'second'])
+  })
+
   it('spawns the pty only once across repeated start() calls (remounts)', () => {
     const deps = makeDeps()
     const session = new TerminalSession('t1', { write: vi.fn() }, deps)
