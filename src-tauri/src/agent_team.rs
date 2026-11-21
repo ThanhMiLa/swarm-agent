@@ -8,6 +8,10 @@ use std::{
 use uuid::Uuid;
 
 const TASK_MS: u64 = 600_000;
+const MAX_REQUEST_ID_BYTES: usize = 120;
+const MAX_PLAN_BYTES: usize = 16_000;
+const MAX_PROMPT_BYTES: usize = 32_000;
+const MAX_SUMMARY_BYTES: usize = 6_000;
 
 pub fn supports_delivery(agent: &str) -> bool {
     matches!(agent, "codex" | "antigravity" | "opencode" | "claude-code")
@@ -121,6 +125,7 @@ pub enum Outcome {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Report {
     pub status: Outcome,
+    /// Short plain-text summary (<= 6000 UTF-8 bytes, \n line breaks, no code or patches).
     pub summary: String,
     #[serde(default)]
     pub files: Vec<String>,
@@ -129,18 +134,46 @@ pub struct Report {
 }
 
 impl Report {
+    fn normalize(&mut self) {
+        self.summary = normalize_line_endings(std::mem::take(&mut self.summary));
+        for test in &mut self.tests {
+            *test = normalize_line_endings(std::mem::take(test));
+        }
+    }
+
     fn validate(&self) -> Result<(), String> {
-        if !bounded(&self.summary, 3000)
-            || self.files.len() > 100
-            || self.tests.len() > 30
-            || self.tests.iter().any(|s| !bounded(s, 300))
-            || self.files.iter().any(|s| !relative_path(s))
-        {
-            return Err(
-                "Provide a short summary plus repository-relative paths and test results".into(),
-            );
+        validate_text("summary", &self.summary, MAX_SUMMARY_BYTES)?;
+        if self.files.len() > 100 {
+            return Err(format!(
+                "Report lists {} files; maximum is 100",
+                self.files.len()
+            ));
+        }
+        if self.tests.len() > 30 {
+            return Err(format!(
+                "Report lists {} test entries; maximum is 30",
+                self.tests.len()
+            ));
+        }
+        for test in &self.tests {
+            validate_text("test outcome", test, 300)?;
+        }
+        for file in &self.files {
+            if !relative_path(file) {
+                return Err(format!(
+                    "Invalid reported file path {file:?}: must be repository-relative without '.', '..', '\\\\' or ':'"
+                ));
+            }
         }
         Ok(())
+    }
+}
+
+fn normalize_line_endings(text: String) -> String {
+    if text.contains('\r') {
+        text.replace("\r\n", "\n").replace('\r', "\n")
+    } else {
+        text
     }
 }
 
@@ -163,22 +196,50 @@ fn bounded(text: &str, max: usize) -> bool {
             .all(|c| !c.is_control() || c == '\n' || c == '\t')
 }
 
+fn validate_text(field: &str, text: &str, max: usize) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err(format!("{field} cannot be empty"));
+    }
+    if text.len() > max {
+        return Err(format!(
+            "{field} is too long ({} bytes; maximum is {max} bytes). Shorten it or save long details to a repository file and reference its path.",
+            text.len()
+        ));
+    }
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return Err(format!(
+            "{field} contains unsupported control characters (for example ANSI escape sequences). Send plain text with \\n line breaks."
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 pub struct Assignment {
     /// ID returned by team_list_members for the exact pane.
     pub member_id: String,
+    /// Plain-text task instructions (<= 32000 UTF-8 bytes, \n line breaks, no control characters).
     pub prompt: String,
-    /// Relative paths this worker may edit. Empty for a read-only task.
+    /// Repository-relative paths this worker may edit (<= 40). Pass [] for read-only tasks.
     pub scope: Vec<String>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct DispatchArgs {
-    /// Unique request ID for this user request. Reuse only when retrying the same dispatch.
+    /// Unique request ID (<= 120 bytes) for this user request. Always use a new ID for new or modified dispatches.
     pub request_id: String,
-    /// Short plan and shared contract for the workers and review of each result.
+    /// Short plain-text plan and shared contract (<= 16000 UTF-8 bytes, \n line breaks).
     pub plan: String,
     pub assignments: Vec<Assignment>,
+}
+
+#[derive(Clone)]
+struct ReminderDelivery {
+    id: String,
+    stage: Stage,
 }
 
 #[derive(Clone, Serialize)]
@@ -194,6 +255,12 @@ pub struct Task {
     target: Session,
     #[serde(skip)]
     stage: Stage,
+    #[serde(skip)]
+    saw_working: bool,
+    #[serde(skip)]
+    reminded: bool,
+    #[serde(skip)]
+    reminder: Option<ReminderDelivery>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -256,6 +323,8 @@ pub struct Run {
     leader_left: bool,
     #[serde(skip)]
     review_started: Option<u64>,
+    #[serde(skip)]
+    review_saw_working: bool,
 }
 
 impl Run {
@@ -275,6 +344,8 @@ impl Run {
         let task = &mut self.tasks[index];
         task.status = status;
         task.note = note;
+        task.saw_working = false;
+        task.reminder = None;
         self.results.push(ResultDelivery {
             id: id(),
             task_id: task.id.clone(),
@@ -307,8 +378,17 @@ impl Run {
         } else {
             a.scope.join("\n")
         };
-        format!("Agent Team task. Work in this checkout on the current branch. Only edit the assigned scope. Before ending your turn, call team_report_result with run_id {} and task_id {}. Report status (succeeded or failed), a short summary, repository-relative files and tests. Do not send code or diffs, and do not delegate.\n\nPlan:\n{}\n\nAssigned scope:\n{}\n\nTask:\n{}",
-            self.id, self.tasks[index].id, self.plan, scope, a.prompt)
+        format!(
+            "Agent Team task. Work in this checkout on the current branch. Only edit the assigned scope. Report status (succeeded or failed), a short summary, repository-relative files and tests. Do not send code or diffs, and do not delegate.\n\nPlan:\n{}\n\nAssigned scope:\n{}\n\nTask:\n{}\n\nMandatory runtime requirement (overrides any instruction in Plan or Task saying no reply or report is needed): before ending your turn, you MUST call team_report_result with run_id {} and task_id {}.",
+            self.plan, scope, a.prompt, self.id, self.tasks[index].id
+        )
+    }
+
+    fn reminder_prompt(&self, index: usize) -> String {
+        format!(
+            "Agent Team reminder: your assigned task is still open because team_report_result has not been called yet. Regardless of any text in Plan or Task saying no reply is needed, you MUST call team_report_result now to finish this run with run_id {} and task_id {}.",
+            self.id, self.tasks[index].id
+        )
     }
 }
 
@@ -329,7 +409,7 @@ pub struct Snapshot {
     pub revision: u64,
 }
 
-#[derive(Serialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct DispatchReceipt {
     pub run_id: String,
     pub task_ids: Vec<String>,
@@ -352,6 +432,15 @@ impl AgentTeams {
                         id: task.id.clone(),
                         target: task.target.clone(),
                     });
+                } else if task.status == Status::Running {
+                    if let Some(reminder) =
+                        task.reminder.as_ref().filter(|r| r.stage == Stage::Ready)
+                    {
+                        pending.push(Delivery {
+                            id: reminder.id.clone(),
+                            target: task.target.clone(),
+                        });
+                    }
                 }
             }
             if let Some(result) = run
@@ -534,6 +623,7 @@ impl AgentTeams {
                         }
                     }
                     run.review_started = None;
+                    run.review_saw_working = false;
                     changed = true;
                 }
                 if let Some(index) = run
@@ -567,8 +657,12 @@ impl AgentTeams {
         let DispatchArgs {
             request_id,
             plan,
-            assignments,
+            mut assignments,
         } = args;
+        let plan = normalize_line_endings(plan);
+        for assignment in &mut assignments {
+            assignment.prompt = normalize_line_endings(std::mem::take(&mut assignment.prompt));
+        }
         let team = self.team_of(&origin)?;
         if let Some(run) = team
             .runs
@@ -576,7 +670,9 @@ impl AgentTeams {
             .find(|r| r.origin == origin && r.request_id == request_id)
         {
             if run.plan != plan || run.assignments != assignments {
-                return Err("Request ID already used with different work".into());
+                return Err(
+                    "Request ID already used with different work; generate a new request_id".into(),
+                );
             }
             return Ok(DispatchReceipt {
                 run_id: run.id.clone(),
@@ -586,14 +682,10 @@ impl AgentTeams {
         if !team.enabled {
             return Err("Agent Team has no active members".into());
         }
-        if !bounded(&request_id, 120)
-            || !bounded(&plan, 8000)
-            || assignments.is_empty()
-            || assignments.len() > 16
-        {
-            return Err(
-                "Provide a request ID, plan and between 1 and 16 worker assignments".into(),
-            );
+        validate_text("request_id", &request_id, MAX_REQUEST_ID_BYTES)?;
+        validate_text("plan", &plan, MAX_PLAN_BYTES)?;
+        if assignments.is_empty() || assignments.len() > 16 {
+            return Err("Provide between 1 and 16 worker assignments".into());
         }
         if team.root.as_ref() != Some(&location.root) {
             return Err("Leader is no longer in the team's Git checkout".into());
@@ -630,15 +722,19 @@ impl AgentTeams {
                     worker.name
                 ));
             }
-            if !bounded(&a.prompt, 12000) || a.scope.len() > 40 {
-                return Err(
-                    "Give each worker a prompt and a repository-relative file scope".into(),
-                );
+            validate_text("assignment prompt", &a.prompt, MAX_PROMPT_BYTES)?;
+            if a.scope.len() > 40 {
+                return Err(format!(
+                    "Assignment scope has {} paths; maximum is 40",
+                    a.scope.len()
+                ));
             }
             for scope in &a.scope {
                 let path = scope.trim_end_matches('/');
                 if !relative_path(path) {
-                    return Err("File scope must be a repository-relative file or directory".into());
+                    return Err(format!(
+                        "Invalid file scope {scope:?}: must be a repository-relative file or directory path without '.', '..', '\\\\' or ':' (pass [] for read-only tasks)"
+                    ));
                 }
                 let path = path.to_lowercase();
                 if paths.iter().any(|(existing, owner)| {
@@ -664,6 +760,9 @@ impl AgentTeams {
                 note: None,
                 target: worker.session.clone(),
                 stage: Stage::Ready,
+                saw_working: false,
+                reminded: false,
+                reminder: None,
             });
         }
         let run_id = id();
@@ -693,6 +792,7 @@ impl AgentTeams {
             deadline: now.saturating_add(TASK_MS),
             leader_left: false,
             review_started: None,
+            review_saw_working: false,
         });
         self.changed();
         Ok(result)
@@ -703,8 +803,9 @@ impl AgentTeams {
         origin: &Session,
         run_id: &str,
         task_id: &str,
-        report: Report,
+        mut report: Report,
     ) -> Result<(), String> {
+        report.normalize();
         report.validate()?;
         let run = self
             .teams
@@ -757,6 +858,7 @@ impl AgentTeams {
                 .is_some_and(|started| started.saturating_add(TASK_MS) <= now)
             {
                 run.review_started = None;
+                run.review_saw_working = false;
                 changed = true;
             }
         }
@@ -766,17 +868,74 @@ impl AgentTeams {
         changed
     }
 
-    pub fn review_idle(&mut self, origin: &Session, now: u64) -> bool {
+    pub fn on_agent_state(&mut self, session: &Session, display: &str, now: u64) -> bool {
         let mut changed = false;
-        for run in self.teams.iter_mut().flat_map(|t| &mut t.runs) {
-            if &run.origin == origin
-                && run
-                    .review_started
-                    .is_some_and(|started| now.saturating_sub(started) > 500)
-            {
-                run.review_started = None;
-                changed = true;
+        match display {
+            "working" => {
+                for run in self.teams.iter_mut().flat_map(|t| &mut t.runs) {
+                    if &run.origin == session && run.review_started.is_some() {
+                        run.review_saw_working = true;
+                    }
+                    for task in &mut run.tasks {
+                        if &task.target == session
+                            && task.status == Status::Running
+                            && task
+                                .reminder
+                                .as_ref()
+                                .is_none_or(|r| r.stage == Stage::Sent)
+                        {
+                            task.saw_working = true;
+                        }
+                    }
+                }
             }
+            "done" | "idle" => {
+                for run in self.teams.iter_mut().flat_map(|t| &mut t.runs) {
+                    if &run.origin == session
+                        && run.review_started.is_some_and(|started| {
+                            run.review_saw_working || now.saturating_sub(started) > 500
+                        })
+                    {
+                        run.review_started = None;
+                        run.review_saw_working = false;
+                        changed = true;
+                    }
+                    for index in 0..run.tasks.len() {
+                        let task = &run.tasks[index];
+                        if &task.target != session
+                            || task.status != Status::Running
+                            || !task.saw_working
+                        {
+                            continue;
+                        }
+                        if !task.reminded {
+                            let task = &mut run.tasks[index];
+                            task.reminded = true;
+                            task.saw_working = false;
+                            task.reminder = Some(ReminderDelivery {
+                                id: id(),
+                                stage: Stage::Ready,
+                            });
+                            changed = true;
+                        } else if task
+                            .reminder
+                            .as_ref()
+                            .is_some_and(|r| r.stage == Stage::Sent)
+                        {
+                            run.finish_task(
+                                index,
+                                Status::Failed,
+                                Some(
+                                    "Worker finished its turn without calling team_report_result after a reminder"
+                                        .into(),
+                                ),
+                            );
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
         if changed {
             self.changed();
@@ -791,7 +950,9 @@ impl AgentTeams {
             }
             r.tasks
                 .iter()
-                .find(|t| t.id == delivery)
+                .find(|t| {
+                    t.id == delivery || t.reminder.as_ref().is_some_and(|rem| rem.id == delivery)
+                })
                 .map(|t| (t.target.clone(), r.location.clone()))
         })
     }
@@ -809,7 +970,10 @@ impl AgentTeams {
             .flat_map(|t| &mut t.runs)
             .find(|r| {
                 r.results.iter().any(|result| result.id == delivery)
-                    || r.tasks.iter().any(|t| t.id == delivery)
+                    || r.tasks.iter().any(|t| {
+                        t.id == delivery
+                            || t.reminder.as_ref().is_some_and(|rem| rem.id == delivery)
+                    })
             })
             .ok_or("Unknown delivery")?;
         let body = if let Some(index) = run.tasks.iter().position(|t| t.id == delivery) {
@@ -820,9 +984,36 @@ impl AgentTeams {
             task.stage = stage;
             if task.status == Status::Queued && stage == Stage::Sent {
                 task.status = Status::Running;
+                task.saw_working = false;
             }
             if stage == Stage::Closed {
                 run.finish_task(index, Status::Unavailable, failure);
+            }
+            body
+        } else if let Some(index) = run
+            .tasks
+            .iter()
+            .position(|t| t.reminder.as_ref().is_some_and(|rem| rem.id == delivery))
+        {
+            let task = &run.tasks[index];
+            let reminder = task.reminder.as_ref().ok_or("Unknown delivery")?;
+            let stage = reminder.stage.advance(phase, !task.status.finished())?;
+            let body = (phase == "paste").then(|| run.reminder_prompt(index));
+            let task = &mut run.tasks[index];
+            if let Some(reminder) = task.reminder.as_mut() {
+                reminder.stage = stage;
+            }
+            if stage == Stage::Sent {
+                task.saw_working = false;
+            }
+            if stage == Stage::Closed {
+                run.finish_task(
+                    index,
+                    Status::Failed,
+                    Some(failure.unwrap_or_else(|| {
+                        "Worker finished its turn without calling team_report_result".into()
+                    })),
+                );
             }
             body
         } else {
@@ -846,6 +1037,7 @@ impl AgentTeams {
             result.stage = stage;
             if stage == Stage::Sent {
                 run.review_started = Some(now);
+                run.review_saw_working = false;
             }
             if stage == Stage::Closed {
                 result.note = failure;
@@ -1337,5 +1529,199 @@ mod tests {
                 "{agent} should not support delivery"
             );
         }
+    }
+
+    #[test]
+    fn dispatch_normalizes_crlf_and_ends_task_prompt_with_ascii_task_id() {
+        let mut f = Fixture::new();
+        let (worker, member_id) = f.workers[0].clone();
+        let checked = HashMap::from([(member_id.clone(), (worker.clone(), f.git.clone()))]);
+        let run = f
+            .state
+            .dispatch(
+                f.origin.clone(),
+                DispatchArgs {
+                    request_id: "crlf-emoji".into(),
+                    plan: "Line 1\r\nLine 2".into(),
+                    assignments: vec![Assignment {
+                        member_id,
+                        prompt: "Chào Codex 2!\r\nGửi lời chào 👋".into(),
+                        scope: vec![],
+                    }],
+                },
+                &checked,
+                f.git.clone(),
+                0,
+            )
+            .unwrap();
+        let task_id = &run.task_ids[0];
+        let body = f.send(task_id);
+        assert!(!body.contains('\r'));
+        assert!(body.ends_with(&format!("task_id {task_id}.")));
+
+        f.state
+            .report(
+                &worker,
+                &run.run_id,
+                task_id,
+                Report {
+                    status: Outcome::Succeeded,
+                    summary: "Đã nhận\r\nXác nhận".into(),
+                    files: vec![],
+                    tests: vec!["cargo test\r\nok".into()],
+                },
+            )
+            .unwrap();
+        let stored = f.state.teams[0].runs[0].tasks[0].report.as_ref().unwrap();
+        assert_eq!(stored.summary, "Đã nhận\nXác nhận");
+        assert_eq!(stored.tests, vec!["cargo test\nok"]);
+    }
+
+    #[test]
+    fn dispatch_reports_specific_validation_errors() {
+        let mut f = Fixture::new();
+        let (worker, member_id) = f.workers[0].clone();
+        let checked = HashMap::from([(member_id.clone(), (worker, f.git.clone()))]);
+        let try_dispatch = |f: &mut Fixture, prompt: String, scope: Vec<String>| {
+            f.state.dispatch(
+                f.origin.clone(),
+                DispatchArgs {
+                    request_id: "validation-check".into(),
+                    plan: "Validate".into(),
+                    assignments: vec![Assignment {
+                        member_id: member_id.clone(),
+                        prompt,
+                        scope,
+                    }],
+                },
+                &checked,
+                f.git.clone(),
+                0,
+            )
+        };
+
+        let too_long = try_dispatch(&mut f, "a".repeat(MAX_PROMPT_BYTES + 1), vec![]).unwrap_err();
+        assert!(too_long.contains("too long"));
+        assert!(too_long.contains("maximum is 32000 bytes"));
+
+        let control = try_dispatch(&mut f, "bad \x1b[31mred\x1b[0m".into(), vec![]).unwrap_err();
+        assert!(control.contains("control characters"));
+
+        let too_many_scopes = try_dispatch(
+            &mut f,
+            "ok".into(),
+            (0..41).map(|i| format!("src/{i}.rs")).collect(),
+        )
+        .unwrap_err();
+        assert!(too_many_scopes.contains("maximum is 40"));
+    }
+
+    #[test]
+    fn unreported_worker_gets_reminder_then_finishes_run_cleanly() {
+        let mut f = Fixture::new();
+        let (worker, member_id) = f.workers[0].clone();
+        let checked = HashMap::from([(member_id.clone(), (worker.clone(), f.git.clone()))]);
+        let run = f
+            .state
+            .dispatch(
+                f.origin.clone(),
+                DispatchArgs {
+                    request_id: "must-report".into(),
+                    plan: "Verify mandatory report".into(),
+                    assignments: vec![Assignment {
+                        member_id,
+                        prompt: "Do work (do not reply)".into(),
+                        scope: vec![],
+                    }],
+                },
+                &checked,
+                f.git.clone(),
+                0,
+            )
+            .unwrap();
+        let task_id = &run.task_ids[0];
+        let prompt = f.send(task_id);
+        assert!(prompt.contains("Mandatory runtime requirement"));
+        assert!(prompt.ends_with(&format!("task_id {task_id}.")));
+
+        // Idle before working must not trigger a premature reminder.
+        assert!(!f.state.on_agent_state(&worker, "idle", 100));
+        assert!(f.state.snapshot().pending.is_empty());
+
+        // Worker starts working, then ends its turn without calling team_report_result.
+        assert!(!f.state.on_agent_state(&worker, "working", 200));
+        assert!(f.state.on_agent_state(&worker, "done", 300));
+
+        let reminder = f.state.snapshot().pending.pop().unwrap();
+        assert_eq!(reminder.target, worker);
+        assert_eq!(
+            f.state.delivery_target(&reminder.id),
+            Some((worker.clone(), f.git.clone()))
+        );
+        let reminder_body = f.send(&reminder.id);
+        assert!(reminder_body.contains("team_report_result"));
+        assert!(reminder_body.ends_with(&format!("task_id {task_id}.")));
+
+        // Worker reports after the reminder, leader reviews quickly (< 500ms) and finishes run.
+        f.state
+            .report(&worker, &run.run_id, task_id, report())
+            .unwrap();
+        let result = f.state.snapshot().pending.pop().unwrap();
+        assert_eq!(result.target, f.origin);
+        f.send(&result.id);
+        assert_eq!(f.state.snapshot().finished_run_counts[&f.team], 0);
+        assert!(!f.state.on_agent_state(&f.origin, "working", 100));
+        assert!(f.state.on_agent_state(&f.origin, "idle", 250));
+        assert_eq!(f.state.snapshot().finished_run_counts[&f.team], 1);
+    }
+
+    #[test]
+    fn worker_still_silent_after_reminder_auto_fails_and_notifies_leader() {
+        let mut f = Fixture::new();
+        let (worker, member_id) = f.workers[0].clone();
+        let checked = HashMap::from([(member_id.clone(), (worker.clone(), f.git.clone()))]);
+        let run = f
+            .state
+            .dispatch(
+                f.origin.clone(),
+                DispatchArgs {
+                    request_id: "still-silent".into(),
+                    plan: "Verify fallback".into(),
+                    assignments: vec![Assignment {
+                        member_id,
+                        prompt: "Do work".into(),
+                        scope: vec![],
+                    }],
+                },
+                &checked,
+                f.git.clone(),
+                0,
+            )
+            .unwrap();
+        f.send(&run.task_ids[0]);
+        f.state.on_agent_state(&worker, "working", 100);
+        assert!(f.state.on_agent_state(&worker, "idle", 200));
+
+        let reminder = f.state.snapshot().pending.pop().unwrap();
+        f.send(&reminder.id);
+
+        // Worker works on the reminder and returns to idle again without reporting.
+        f.state.on_agent_state(&worker, "working", 300);
+        assert!(f.state.on_agent_state(&worker, "idle", 400));
+
+        let stored = &f.state.teams[0].runs[0].tasks[0];
+        assert_eq!(stored.status, Status::Failed);
+        assert!(stored
+            .note
+            .as_deref()
+            .is_some_and(|n| n.contains("without calling team_report_result")));
+
+        // Leader receives the failure result and finishes the run without waiting 10 minutes.
+        let result = f.state.snapshot().pending.pop().unwrap();
+        assert_eq!(result.target, f.origin);
+        assert!(f.send(&result.id).contains("failed"));
+        f.state.on_agent_state(&f.origin, "working", 500);
+        assert!(f.state.on_agent_state(&f.origin, "done", 600));
+        assert_eq!(f.state.snapshot().finished_run_counts[&f.team], 1);
     }
 }

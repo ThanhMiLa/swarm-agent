@@ -124,19 +124,17 @@ pub fn kill_terminal(app: AppHandle, state: State<'_, AppState>, id: String) {
     }
 }
 
-/// Refresh token statistics and release the review reservation when the leader returns to idle.
+/// Refresh token statistics and advance Agent Team run lifecycle from pane state transitions.
 #[tauri::command]
 pub fn report_agent_state(app: AppHandle, state: State<'_, AppState>, id: String, display: String) {
     let Some(session) = state.pane_session(&id) else {
         return;
     };
-    if matches!(display.as_str(), "done" | "idle")
-        && state
-            .agent_teams
-            .lock()
-            .unwrap()
-            .review_idle(&session, crate::agent_team::now_ms())
-    {
+    if state.agent_teams.lock().unwrap().on_agent_state(
+        &session,
+        &display,
+        crate::agent_team::now_ms(),
+    ) {
         crate::agent_team::notify(&app);
     }
     if display == "done" || display == "idle" {

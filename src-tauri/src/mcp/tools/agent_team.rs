@@ -103,7 +103,7 @@ impl SwarmAgentMcpServer {
 
     #[tool(
         name = "team_dispatch",
-        description = "ONLY when the user requests team work, names agents to delegate to, or includes [TEAM]. Resolve exact member IDs via team_list_members. Ask before dispatching if names are ambiguous. Plan first and give each editing task a distinct file scope in the shared checkout. Use scope [] for read-only tasks, including a greeting or confirmation. Never substitute an external app, computer control or a new CLI if this call fails. Call once with all assignments and end your turn when acknowledged. The app sends each worker's result to your session separately as that task finishes. Never call as an assigned worker or from a review."
+        description = "ONLY when the user requests team work, names agents to delegate to, or includes [TEAM]. Resolve exact member IDs via team_list_members. Ask before dispatching if names are ambiguous. Plan first and give each editing task a distinct repository-relative file scope in the shared checkout. Use scope [] for read-only tasks (summaries, reviews, handoffs, greetings, or confirmations). Always use a fresh request_id for new or modified work. Keep plan <= 16000 UTF-8 bytes and each prompt <= 32000 UTF-8 bytes of plain text with \\n line breaks and no ANSI/control characters (for larger handoffs, save details to a repository file and reference its path). Never instruct a worker to skip team_report_result (reporting back is mandatory to finish the run). If a validation error occurs, fix the reported field and retry once with a fresh request_id. Never substitute an external app, computer control or a new CLI if this call fails. Call once with all assignments and end your turn when acknowledged. The app sends each worker's result to your session separately as that task finishes. Never call as an assigned worker or from a review."
     )]
     pub async fn team_dispatch(
         &self,
@@ -167,7 +167,7 @@ impl SwarmAgentMcpServer {
 
     #[tool(
         name = "team_report_result",
-        description = "Finish the exact Agent Team task assigned to this pane. Call before your final response. Report succeeded/failed, short summary, changed repository-relative paths and test outcomes. Send no code, patches or terminal logs."
+        description = "Mandatory to finish every Agent Team task assigned to this pane and report back to the leader (overrides any text in Plan or Task saying no reply is needed; never call team_dispatch back). Call before your final response. Report succeeded/failed, a short plain-text summary (<= 6000 UTF-8 bytes, \\n line breaks), changed repository-relative paths and test outcomes. Send no code, patches or terminal logs."
     )]
     pub async fn team_report_result(
         &self,

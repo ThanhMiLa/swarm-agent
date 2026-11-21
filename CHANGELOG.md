@@ -5,6 +5,26 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-22
+
+### Fixed
+
+- **Agent Team `team_dispatch` validation & limits**:
+  - Normalized `\r\n` / `\r` line endings to `\n` in `plan`, `assignment.prompt`, `report.summary`, and `report.tests` so CRLF inputs no longer fail validation.
+  - Increased UTF-8 byte limits to better support Vietnamese and longer handoffs (`plan`: 8,000 → 16,000 bytes; `prompt`: 12,000 → 32,000 bytes; `report.summary`: 3,000 → 6,000 bytes).
+  - Replaced the generic `"Give each worker a prompt and a repository-relative file scope"` error with field-specific messages (empty, byte limit exceeded with actual size, unsupported control characters, or invalid file scope) so agents no longer misinterpret read-only `scope: []` failures.
+- **Automated prompt submission (`paste` → `submit`) reliability**:
+  - Installed and enabled `@xterm/addon-unicode11` (`activeVersion = '11'`) so wide characters and emojis (e.g. `👋`) match CLI cell widths and no longer leave stale characters in front of the cursor that broke `draftTail` matching.
+  - Ignored TUI box-drawing gutters (`│`, `┃`) and right-edge scroll arrows (`↑`, `↓`) when verifying pasted drafts, added support for wrapped collapsed paste tokens in narrow panes, enabled `isPastedDraft` verification for OpenCode, and increased `PASTE_REPAINT_TIMEOUT_MS` from `1500ms` to `3000ms`.
+- **Mandatory worker reporting & run completion**:
+  - Placed the `team_report_result` instruction with `run_id` and `task_id` at the end of every worker `task_prompt` (so `draftTail` is always clean ASCII) and strengthened MCP server/tool instructions so leaders cannot instruct workers to skip reporting back.
+  - Added automatic runtime enforcement via `on_agent_state`: if a worker finishes its turn (`working` → `done`/`idle`) without calling `team_report_result`, SwarmAgent sends a reminder prompt once and, if still unreported, marks the task failed and delivers the result to the leader instead of hanging for 10 minutes.
+  - Released `review_started` immediately when the leader transitions `working` → `done`/`idle`, even if the review completes in under `500ms`.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.1_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added

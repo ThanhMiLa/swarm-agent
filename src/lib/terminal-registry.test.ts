@@ -22,6 +22,7 @@ vi.mock('@xterm/xterm', () => ({
     get options() { return this.terminalOptions }
     set options(options: Record<string, unknown>) { Object.assign(this.terminalOptions, options) }
     parser = { registerOscHandler: vi.fn() }
+    unicode = { register: vi.fn(), activeVersion: '6' }
     buffer = { active: { type: 'normal', baseY: 0 }, onBufferChange: vi.fn() }
     loadAddon(addon: { activate?: (term: unknown) => void }): void { addon.activate?.(this) }
     open = vi.fn()

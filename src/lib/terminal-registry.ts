@@ -1,6 +1,7 @@
 import { isAgentComposer } from '@/lib/agent-team-composer'
 import { Terminal, type ILink, type ILinkHandler, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
@@ -449,6 +450,9 @@ function getOrCreate(id: string): Entry {
   })
   const fit = new FitAddon()
   term.loadAddon(fit)
+  const unicode11 = new Unicode11Addon()
+  term.loadAddon(unicode11)
+  term.unicode.activeVersion = '11'
   const search = new SearchAddon()
   term.loadAddon(search)
   // Forward the terminal title straight from the program running in the pty.

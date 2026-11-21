@@ -22,20 +22,45 @@ const CODEX_COLLAPSED_PASTE = /^\s*›\s*\[Pasted Content \d+ chars\]\s*$/
 const ANTIGRAVITY_COLLAPSED_PASTE = /^\s*>\s*\[Pasted text #\d+ \+\d+ lines?\]\s*$/
 const CLAUDE_COLLAPSED_PASTE = /^\s*❯\s*\[Pasted text #\d+(?:\s+\+\d+\s+lines?)?\]\s*$/
 
+function stripRowChrome(row: string, isCursorRow: boolean): string {
+  // Drop TUI box-drawing gutters and right-edge scroll arrows (↑/↓) so line
+  // wrapping inside a bordered or scrollable composer still matches expectedTail.
+  let cleaned = row.replace(/^\s*[│┃]/, '')
+  if (!isCursorRow) {
+    cleaned = cleaned.replace(/\s+[↑↓]\s*$/, '')
+  }
+  return cleaned
+}
+
+function isCollapsedPaste(pattern: RegExp, beforeCursor: string[]): boolean {
+  const cursorLine = beforeCursor.at(-1) ?? ''
+  if (pattern.test(cursorLine)) return true
+  if (!cursorLine.trimEnd().endsWith(']')) return false
+  const wrapped = beforeCursor
+    .slice(-2)
+    .map((line) => line.replace(/^\s*[│┃]/, '').trim())
+    .join(' ')
+  return pattern.test(wrapped)
+}
+
 function isPastedDraft(agent: string | undefined, draft: TeamDraft): boolean {
   const tail = draft.expectedTail
-  if (tail && draft.beforeCursor.join('').replace(/\s/g, '').endsWith(tail)) return true
+  const lastIndex = draft.beforeCursor.length - 1
+  const normalized = draft.beforeCursor
+    .map((row, index) => stripRowChrome(row, index === lastIndex))
+    .join('')
+    .replace(/\s/g, '')
+  if (tail && normalized.endsWith(tail)) return true
 
   // CLIs can hide the paste body behind a token. Only accept the
   // token at the cursor, after SwarmAgent has written its own draft.
-  const cursorLine = draft.beforeCursor.at(-1) ?? ''
   switch (agent) {
     case 'codex':
-      return CODEX_COLLAPSED_PASTE.test(cursorLine)
+      return isCollapsedPaste(CODEX_COLLAPSED_PASTE, draft.beforeCursor)
     case 'antigravity':
-      return ANTIGRAVITY_COLLAPSED_PASTE.test(cursorLine)
+      return isCollapsedPaste(ANTIGRAVITY_COLLAPSED_PASTE, draft.beforeCursor)
     case 'claude-code':
-      return CLAUDE_COLLAPSED_PASTE.test(cursorLine)
+      return isCollapsedPaste(CLAUDE_COLLAPSED_PASTE, draft.beforeCursor)
     default:
       return false
   }
@@ -55,6 +80,7 @@ export function isAgentComposer(agent: string | undefined, lines: string[], draf
         hasPrompt(/^\s*›(?:\s|$)/) &&
         /for shortcuts|context (?:left|used)|context window|Ask Codex/i.test(screen)
     case 'opencode':
+      if (draft !== undefined && isPastedDraft(agent, draft)) return true
       return /ctrl\+p\s+commands|tab\s+agents/i.test(screen) ||
         (/ctrl\+p/i.test(screen) && /shift\+tab/i.test(screen))
     case 'antigravity':

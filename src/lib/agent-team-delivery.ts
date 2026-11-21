@@ -7,7 +7,7 @@ import { deliverTeamPrompt, onTeamChanged, type Delivery } from '@/tauri/agent-t
 
 const QUIET_MS = 2000
 const PASTE_SETTLE_MS = 350
-const PASTE_REPAINT_TIMEOUT_MS = 1500
+const PASTE_REPAINT_TIMEOUT_MS = 3000
 const PASTE_RECHECK_MS = 100
 const UNCONFIRMED_COMPOSER = 'Waiting for a confirmed agent input prompt'
 

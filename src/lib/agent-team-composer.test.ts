@@ -101,4 +101,23 @@ describe('Agent Team input readiness', () => {
     expect(isAgentComposer('claude-code', [...lines, 'Esc to cancel'], draft)).toBe(false)
     expect(isAgentComposer('claude-code', ['❯ [Pasted text #2]'], { beforeCursor: ['❯ [Pasted text #2]'], expectedTail: 'tail' })).toBe(true)
   })
+
+  it('ignores TUI scroll arrows and box gutters when matching pasted drafts', () => {
+    const beforeCursor = [
+      '│ Task:                       ↑',
+      '│ call team_report_result     ↓',
+      '│ with task_id abc-123.'
+    ]
+    const draft = { beforeCursor, expectedTail: 'resultwithtask_idabc-123.' }
+    expect(isAgentComposer('codex', beforeCursor, draft)).toBe(true)
+    expect(isAgentComposer('opencode', beforeCursor, draft)).toBe(true)
+    expect(isAgentComposer('opencode', [...beforeCursor, 'Permission required'], draft)).toBe(false)
+  })
+
+  it('recognizes wrapped collapsed paste tokens only at the active cursor', () => {
+    const wrapped = ['› [Pasted Content 1039', '  chars]']
+    const draft = { beforeCursor: wrapped, expectedTail: 'nevermatchesrawtext' }
+    expect(isAgentComposer('codex', wrapped, draft)).toBe(true)
+    expect(isAgentComposer('codex', [...wrapped, '› '], { ...draft, beforeCursor: [...wrapped, '› '] })).toBe(false)
+  })
 })

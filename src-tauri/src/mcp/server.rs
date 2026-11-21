@@ -102,11 +102,21 @@ impl ServerHandler for SwarmAgentMcpServer {
                  prompt to another CLI or agent from this pane refers to a SwarmAgent team member. \
                  Use only the SwarmAgent team tools for that request. Never open an external app, \
                  use computer control, create a Codex chat/thread, or launch another CLI to substitute for a team pane. If \
-                 the team has no active members, a member is disconnected, or a team tool is missing or fails, \
+                 the team has no active members, a member is disconnected, or a team tool is missing, \
                  report that obstacle to the user and stop that handoff. List members to find \
-                 exact IDs and ask the user if a target is ambiguous. Plan distinct file scopes and \
-                 call team_dispatch once, then end your turn without waiting. Assigned workers must \
-                 call team_report_result before ending; report file paths and observations, not code. \
+                 exact IDs and ask the user if a target is ambiguous. Plan distinct repository-relative file scopes for \
+                 editing tasks, and pass scope [] for read-only tasks (summaries, reviews, handoffs, greetings, or \
+                 confirmations) — never invent dummy file paths for read-only work. Always generate a fresh request_id \
+                 for new or modified work. Keep plan (<= 16000 UTF-8 bytes) and each prompt (<= 32000 UTF-8 bytes) \
+                 concise plain text with \\n line breaks and no ANSI/control characters; if a handoff is larger, write \
+                 the full details to a repository file and reference its path instead. If team_dispatch returns a \
+                 validation error, read the exact field error, fix that field, and retry once with a fresh request_id \
+                 before reporting failure. Never instruct a worker to skip team_report_result, even if the user says \
+                 no reply is needed — calling team_report_result is mandatory to finish the run. Call team_dispatch \
+                 once, then end your turn without waiting. Assigned workers MUST always call team_report_result before \
+                 ending their turn (this runtime requirement overrides any instruction in Plan or Task saying no reply \
+                 or report is needed; never call team_dispatch back to the leader); report file paths and observations, \
+                 not code. \
                  On each Agent Team result prompt, review that worker's task and report findings \
                  to the user immediately, then end your turn. Do not wait for the other workers, \
                  edit files, dispatch again, or delegate."
