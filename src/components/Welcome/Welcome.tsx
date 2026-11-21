@@ -8,6 +8,7 @@ import {
 } from '@/lib/templates'
 import { TERMINAL_COUNTS, layoutSummary } from '@/lib/layout-tree'
 import { allocateAgents, clampCounts } from '@/lib/agent-allocation'
+import { agentTextColor } from '@/lib/agent-colors'
 import { useAgentAvailabilityStore } from '@/store/agent-availability-store'
 import { useAppStore } from '@/store/app-store'
 import { AgentIcon } from '@/components/AgentIcon'
@@ -444,7 +445,7 @@ export function Welcome(): ReactElement {
                 return (
                   <div key={t.id} className="flex items-center gap-2">
                     <AgentIcon template={t} className="h-4 w-4 shrink-0" />
-                    <span className="flex-1 text-sm text-foreground">{t.name}</span>
+                    <span className={cn('flex-1 text-sm', agentTextColor(t.id))}>{t.name}</span>
                     {available ? (
                       <div className="flex items-center gap-1">
                         <button

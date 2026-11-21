@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import { ChevronRight, Folder, FolderOpen, MoreVertical, Pencil, Plus, Settings, X } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, MoreVertical, PanelsTopLeft, Pencil, Plus, Settings, X } from 'lucide-react'
 import { DndContext, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -218,7 +218,7 @@ function ProjectItem({
       onRename={(name) => renameProject(project.id, name)}
       onClose={() => void close().catch(console.error)}
       onNewWorkspace={() => openWelcome(project.id)}
-      icon={<Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
+      icon={<Icon aria-hidden="true" className="h-4 w-4 shrink-0 fill-sky-400/20 text-sky-400" />}
       count={workspaces.length}
       dot={!expanded && <BranchDot leaves={workspaces.flatMap((w) => collectLeaves(w.layout))} />}
     >
@@ -259,6 +259,7 @@ function WorkspaceItem({ workspace, active }: { workspace: Workspace; active: bo
       }}
       onRename={(name) => renameWorkspace(workspace.id, name)}
       onClose={() => closeWorkspace(workspace.id)}
+      icon={<PanelsTopLeft aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-400" />}
       count={leaves.length}
       dot={(!active || !expanded) && <BranchDot leaves={leaves} />}
     >

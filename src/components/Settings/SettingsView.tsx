@@ -29,8 +29,8 @@ const CATEGORIES: Category[] = [
   { id: 'terminal', label: 'Terminal', Icon: Terminal },
   { id: 'notifications', label: 'Notifications', Icon: Bell },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', Icon: Keyboard },
-  { id: 'token-usage', label: 'Token Usage', Icon: BarChart3 },
   { id: 'run-history', label: 'Run History', Icon: History },
+  { id: 'token-usage', label: 'Token Usage', Icon: BarChart3 },
 ]
 
 interface SettingsViewProps {

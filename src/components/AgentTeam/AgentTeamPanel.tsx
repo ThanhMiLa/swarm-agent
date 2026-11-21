@@ -1,11 +1,11 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
 import { Copy, Pencil, Users, X } from 'lucide-react'
+import { confirm } from '@tauri-apps/plugin-dialog'
 import { templateById } from '@/lib/templates'
 import { cn } from '@/lib/utils'
 import { writeClipboard } from '@/tauri/clipboard'
 import { editTeam } from '@/tauri/agent-team'
 import { useAgentTeamStore } from '@/store/agent-team-store'
-import { useTeamPanelStore } from '@/store/team-panel-store'
 import { useAppStore } from '@/store/app-store'
 import { useAgentStateStore } from '@/store/agent-state-store'
 import { AgentIcon } from '@/components/AgentIcon'
@@ -39,6 +39,7 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
   const agentStates = useAgentStateStore((s) => s.byId)
   const [view, setView] = useState<'members' | 'runs'>('members')
   const [draft, setDraft] = useState<{ memberId: string; name: string }>()
+  const [clearing, setClearing] = useState(false)
   const members = team?.members ?? []
   const runs = team?.runs ?? []
 
@@ -64,6 +65,25 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
       .then((saved) => { if (saved) setDraft(undefined) })
   }
 
+  async function clearTeam(): Promise<void> {
+    setClearing(true)
+    try {
+      const confirmed = await confirm(
+        'Remove all members and runs from this Agent Team? Queued tasks and results will be cancelled. Terminals and agents already working will keep running.',
+        { title: 'Clear Agent Team?', kind: 'warning', okLabel: 'Clear team' }
+      )
+      if (!confirmed) return
+      if (await update({ kind: 'clearTeam', teamId: workspaceId })) {
+        setDraft(undefined)
+        setView('members')
+      }
+    } catch (error) {
+      onError(error)
+    } finally {
+      setClearing(false)
+    }
+  }
+
   return (
     <section className={cn(
       'flex h-full min-w-0 flex-col overflow-hidden', dropActive && 'ring-2 ring-inset ring-primary'
@@ -71,7 +91,15 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Users size={15} className="shrink-0 text-muted-foreground" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agent Team</h2>
-        <button type="button" data-focus-return aria-label="Hide Agent Team" className={iconButton} onClick={() => useTeamPanelStore.getState().setOpen(false)}><X size={14} /></button>
+        <button
+          type="button"
+          data-focus-return
+          aria-label="Clear Agent Team"
+          title="Clear members and runs"
+          disabled={clearing || (members.length === 0 && runs.length === 0)}
+          className={cn(iconButton, 'disabled:cursor-not-allowed disabled:opacity-40')}
+          onClick={() => void clearTeam()}
+        ><X size={14} /></button>
       </header>
 
       <div className="flex shrink-0 gap-3 border-b border-border px-3">

@@ -56,6 +56,7 @@ export interface TeamSnapshot {
 
 type Edit =
   | { kind: 'closeWorkspace'; teamId: string }
+  | { kind: 'clearTeam'; teamId: string }
   | { kind: 'join'; teamId: string; terminalId: string }
   | { kind: 'leave'; terminalId: string }
   | { kind: 'renameMember'; teamId: string; memberId: string; name: string }

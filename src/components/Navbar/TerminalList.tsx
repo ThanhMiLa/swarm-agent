@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import type { LeafNode } from '@/lib/layout-tree'
 import { templateById, DEFAULT_TEMPLATE_ID } from '@/lib/templates'
+import { agentTextColor } from '@/lib/agent-colors'
 import { useAppStore } from '@/store/app-store'
 import { useTerminalActivityStore } from '@/store/terminal-activity-store'
 import { useAgentStateStore } from '@/store/agent-state-store'
@@ -47,8 +48,11 @@ function TerminalItem({ leaf, focused }: { leaf: LeafNode; focused: boolean }): 
             : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
         )}
       >
-        <AgentIcon template={template} className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1 truncate">{template.name}</span>
+        <AgentIcon
+          template={template}
+          className={cn('h-4 w-4 shrink-0', !template.icon && 'text-emerald-400')}
+        />
+        <span className={cn('flex-1 truncate', agentTextColor(template.id))}>{template.name}</span>
         {dot === 'activity' ? <ActivityDot /> : dot && <StateDot state={dot} sinceMs={agentState?.sinceMs} />}
       </button>
     </li>

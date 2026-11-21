@@ -89,14 +89,9 @@ workspace code. Start with `npm run tauri dev`.
 - [ ] With the same terminal font and size, switch in and out of **iTerm2 Dark**.
       Check that normal glyphs look slightly heavier and dark text is easier
       to read, including low-contrast truecolor text.
-- [ ] Run `sh scripts/terminal-render-sample.sh` from the repository in iTerm2
-      and in SwarmAgent. On the same display, compare regular/bold and ANSI/RGB
-      rows as you switch **Appearance → iTerm2 Dark → Text renderer** between
-      WebGL and DOM. Existing pane contents must survive both switches.
-- [ ] Restart after choosing DOM, then switch to another theme. The saved choice
-      should apply to **iTerm2 Dark** only; other themes still prefer WebGL.
-- [ ] In **iTerm2 Dark**, **Use profile font** applies JetBrainsMono Nerd Font Mono
-      at 14 px if installed (otherwise uses a fallback). Switching themes alone keeps the font setting.
+- [ ] Appearance shows only theme cards, including for iTerm2 Dark. WebGL is
+      preferred (falling back to DOM when unavailable), even after upgrading from
+      a version with DOM selected. Switching themes keeps the terminal font setting.
 - [ ] Settings → Terminal: changing font / size / line height / ligatures
       updates the preview and every pane.
 - [ ] Settings → Keyboard Shortcuts lists the bindings for the current platform.
@@ -108,9 +103,13 @@ workspace code. Start with `npm run tauri dev`.
 
 ## Agent Team
 
-- [ ] Toggle Agent Team from the title bar and close it with its × button. The rail
-      slides and fades like Projects; terminals fit once the animation settles.
+- [ ] Toggle Agent Team from the title bar. The rail slides and fades like Projects;
+      terminals fit once the animation settles.
       With reduced motion enabled, the panel opens and closes immediately.
+- [ ] Add members and start a run. Cancel the header × confirmation: nothing changes.
+      Confirm it: members and runs disappear, pending deliveries are cancelled, the
+      panel stays open and terminals keep running. Re-add a member in the same workspace;
+      another workspace's team remains untouched.
 - [ ] Hide Agent Team, then drag an AI pane. The panel slides open and accepts
       the drop; cancelling a drag restores the panel's previous visibility.
 - [ ] Open two workspaces in the same checkout. Give each a member named `codex-1`. Confirm that each panel displays only its own roster and runs.

@@ -5,6 +5,19 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-11-21
+
+### Changed
+
+- Added distinctive colors and icons to the project and workspace tree, and color-coded agent names in the sidebar and workspace composer.
+- Simplified Appearance settings, renamed themes, and made WebGL the default renderer with automatic DOM fallback.
+- Moved Run History above Token Usage in Settings and enlarged the header branding.
+- The Agent Team header's × now clears members and runs after confirmation; the title-bar button shows or hides the panel. Clearing cancels pending deliveries without closing terminals.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.1.6_aarch64.dmg`, ad-hoc signed for manual installation.
+
 ## [0.1.5] - 2026-11-21
 
 ### Changed

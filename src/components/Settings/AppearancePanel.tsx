@@ -1,36 +1,24 @@
 import { type ReactElement } from 'react'
 import { Check } from 'lucide-react'
 import { useAppearanceStore } from '@/store/appearance-store'
-import { useTerminalTextStore } from '@/store/terminal-text-store'
-import type { ItermRenderer, Style } from '@/lib/appearance'
-import { ITERM2_DARK_THEME, ITERM2_TEXT_PRESET } from '@/lib/iterm2-preset'
+import type { Style } from '@/lib/appearance'
+import { ITERM2_DARK_THEME } from '@/lib/iterm2-preset'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 
 interface StyleOption {
   id: Style
   label: string
-  variant: 'Dark' | 'Light'
-  surface: string
 }
 
 const STYLE_OPTIONS: StyleOption[] = [
-  { id: 'vscode-dark', label: 'VS Code Dark', variant: 'Dark', surface: 'Modern' },
-  { id: 'terminal-black', label: 'Deck Dark', variant: 'Dark', surface: 'SpaceVibe' },
-  { id: 'iterm2-dark', label: 'iTerm2 Dark', variant: 'Dark', surface: 'Profile preset' }
+  { id: 'vscode-dark', label: 'Visual Studio Code Dark' },
+  { id: 'terminal-black', label: 'SwarmAgent Dark' },
+  { id: 'iterm2-dark', label: 'iTerm2 Dark' }
 ]
 
 export function AppearancePanel(): ReactElement {
   const style = useAppearanceStore((s) => s.style)
   const setStyle = useAppearanceStore((s) => s.setStyle)
-  const itermRenderer = useAppearanceStore((s) => s.itermRenderer)
-  const setItermRenderer = useAppearanceStore((s) => s.setItermRenderer)
-  const text = useTerminalTextStore((s) => s.text)
-  const applyTypography = useTerminalTextStore((s) => s.applyTypography)
-  const usesProfileFont =
-    text.fontFamily === ITERM2_TEXT_PRESET.fontFamily &&
-    text.fontSize === ITERM2_TEXT_PRESET.fontSize &&
-    text.lineHeight === ITERM2_TEXT_PRESET.lineHeight
 
   return (
     <div className="space-y-8">
@@ -57,43 +45,6 @@ export function AppearancePanel(): ReactElement {
             />
           ))}
         </div>
-        {style === 'iterm2-dark' && (
-          <div className="mt-4 divide-y divide-border rounded-md border border-border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-              <p className="text-xs text-muted-foreground">
-                Profile font: JetBrainsMono Nerd Font Mono, 14 px. You can change it under Terminal → Text.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={usesProfileFont}
-                onClick={() => applyTypography(ITERM2_TEXT_PRESET)}
-              >
-                {usesProfileFont ? 'Profile font applied' : 'Use profile font'}
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-              <div>
-                <label htmlFor="iterm-renderer" className="text-sm font-medium text-foreground">
-                  Text renderer
-                </label>
-                <p id="iterm-renderer-help" className="mt-1 text-xs text-muted-foreground">
-                  Compare how text looks without restarting your terminals. WebGL uses DOM if unavailable.
-                </p>
-              </div>
-              <select
-                id="iterm-renderer"
-                aria-describedby="iterm-renderer-help"
-                value={itermRenderer}
-                onChange={(event) => setItermRenderer(event.target.value as ItermRenderer)}
-                className="rounded-md border border-pane-border bg-card px-2.5 py-1.5 text-sm text-foreground"
-              >
-                <option value="webgl">WebGL (default)</option>
-                <option value="dom">DOM (browser text)</option>
-              </select>
-            </div>
-          </div>
-        )}
       </section>
     </div>
   )
@@ -131,9 +82,6 @@ function ThemeCard({ option, active, onSelect }: ThemeCardProps): ReactElement {
       </div>
       <div className="px-0.5">
         <div className="text-sm font-medium text-foreground">{option.label}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {option.variant} · {option.surface}
-        </div>
       </div>
     </button>
   )

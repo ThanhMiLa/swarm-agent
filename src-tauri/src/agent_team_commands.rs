@@ -64,6 +64,9 @@ pub enum Edit {
     CloseWorkspace {
         team_id: String,
     },
+    ClearTeam {
+        team_id: String,
+    },
     Join {
         team_id: String,
         terminal_id: String,
@@ -127,6 +130,10 @@ pub async fn team_edit(app: AppHandle, edit: Edit) -> Result<(), String> {
         match edit {
             Edit::CloseWorkspace { team_id } => {
                 teams.close_workspace(&team_id);
+                Ok(())
+            }
+            Edit::ClearTeam { team_id } => {
+                teams.clear_team(&team_id);
                 Ok(())
             }
             Edit::RenameMember {

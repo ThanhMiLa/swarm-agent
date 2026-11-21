@@ -80,8 +80,8 @@ export function TitleBar({ fullscreen }: TitleBarProps): ReactElement {
         data-tauri-drag-region
         className="flex h-full select-none items-center gap-2"
       >
-        <Logo className="pointer-events-none size-6" />
-        <span className="pointer-events-none text-xs font-semibold">SwarmAgent</span>
+        <Logo className="pointer-events-none size-8" />
+        <span className="pointer-events-none text-sm font-semibold">SwarmAgent</span>
       </div>
 
       <div className="flex h-full items-center justify-self-end">

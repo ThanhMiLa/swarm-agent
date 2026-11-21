@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import {
   DEFAULT_STYLE,
   applyStyleToDom,
-  readStoredItermRenderer,
   readStoredStyle,
   storeItermRenderer,
   storeStyle,
@@ -32,7 +31,8 @@ export const useAppearanceStore = create<AppearanceStore>((set) => {
 
   return {
     style: initial,
-    itermRenderer: typeof window === 'undefined' ? 'webgl' : readStoredItermRenderer(window.localStorage),
+    // The renderer selector was removed; ignore any previously saved DOM choice.
+    itermRenderer: 'webgl',
     setItermRenderer: (itermRenderer) => {
       if (typeof window !== 'undefined') storeItermRenderer(window.localStorage, itermRenderer)
       set({ itermRenderer })

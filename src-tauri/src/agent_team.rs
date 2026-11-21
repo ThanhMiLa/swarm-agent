@@ -435,6 +435,11 @@ impl AgentTeams {
 
     pub fn close_workspace(&mut self, workspace_id: &str) {
         self.closed_workspaces.insert(workspace_id.to_owned());
+        self.clear_team(workspace_id);
+    }
+
+    /// Remove a team's members and runs without closing its workspace.
+    pub fn clear_team(&mut self, workspace_id: &str) {
         let before = self.teams.len();
         self.teams.retain(|team| team.id != workspace_id);
         if self.teams.len() != before {
@@ -979,6 +984,45 @@ mod tests {
             .is_err());
         assert!(f.state.team_of(&f.origin).is_err());
         assert!(f.state.team_of(&session).is_ok());
+    }
+
+    #[test]
+    fn clearing_team_removes_members_runs_and_pending_only_for_that_workspace() {
+        let mut f = Fixture::new();
+        let run = f.dispatch().unwrap();
+        let mut other = Fixture::in_workspace("workspace-b");
+        let other_run = other.dispatch().unwrap();
+        f.state.teams.append(&mut other.state.teams);
+        let before = f.state.snapshot().revision;
+
+        f.state.clear_team(&f.team);
+
+        let snapshot = f.state.snapshot();
+        assert!(snapshot.revision > before);
+        assert_eq!(snapshot.teams.len(), 1);
+        assert_eq!(snapshot.teams[0].id, other.team);
+        assert_eq!(snapshot.teams[0].members.len(), 3);
+        assert!(snapshot
+            .pending
+            .iter()
+            .all(|p| other_run.task_ids.contains(&p.id)));
+        assert!(f.state.team_of(&f.origin).is_err());
+        assert!(f
+            .state
+            .delivery(&run.task_ids[0], "paste", None, 0)
+            .is_err());
+        f.state
+            .join(
+                &f.team,
+                f.origin.clone(),
+                "codex".into(),
+                f.git.root.clone(),
+            )
+            .unwrap();
+        assert_eq!(
+            f.state.team_of(&f.origin).unwrap().members[0].name,
+            "codex-1"
+        );
     }
 
     #[test]
