@@ -3,7 +3,9 @@
 use crate::pty::{AppState, PtyOut};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::io::{BufRead, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,6 +14,8 @@ pub struct Conversation {
     pub agent_id: String,
     pub session_id: String,
     pub cwd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 fn valid_id(agent: &str, id: &str) -> bool {
@@ -68,6 +72,7 @@ pub fn from_hook(agent: &str, raw: &str) -> Option<Conversation> {
         agent_id: agent.into(),
         session_id: input.session_id,
         cwd: input.cwd,
+        title: None,
     })
 }
 
@@ -233,64 +238,81 @@ fn antigravity_root(line: &str) -> Option<&str> {
 pub fn watch_antigravity(
     app: tauri::AppHandle,
     session: crate::agent_team::Session,
-    file_path: std::path::PathBuf,
+    file_path: PathBuf,
     cwd: String,
 ) {
-    use std::io::{BufRead, Read, Seek, SeekFrom};
     tauri::async_runtime::spawn(async move {
+        let databases = super::home_dir().map(|home| super::antigravity::summary_databases(&home));
         let mut position = 0;
-        let mut last = String::new();
+        let mut active: Option<Conversation> = None;
+        let mut next_title_check = Instant::now();
         loop {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
             let state = app.state::<AppState>();
             if state.pane_session(&session.terminal_id).as_ref() != Some(&session) {
                 break;
             }
-            let Ok(mut file) = std::fs::File::open(&file_path) else {
+            if let Some(id) = read_antigravity_log(&file_path, &mut position).filter(|id| {
+                active
+                    .as_ref()
+                    .is_none_or(|current| current.session_id != *id)
+            }) {
+                let conversation = Conversation {
+                    agent_id: "antigravity".into(),
+                    session_id: id,
+                    cwd: Some(cwd.clone()),
+                    title: None,
+                };
+                publish(&state, &session, conversation.clone());
+                active = Some(conversation);
+                next_title_check = Instant::now();
+            }
+            let (Some(conversation), Some(databases)) = (&mut active, &databases) else {
                 continue;
             };
-            let Ok(len) = file.metadata().map(|metadata| metadata.len()) else {
-                continue;
-            };
-            if len < position {
-                position = 0;
-            }
-            if len == position {
-                continue;
-            }
-            // Bound the work for large debug logs, and never emit partial lines.
-            let start = position.max(len.saturating_sub(256 * 1024));
-            if file.seek(SeekFrom::Start(start)).is_err() {
-                continue;
-            }
-            let mut reader = std::io::BufReader::new(file.take(len - start));
-            let mut line = Vec::new();
-            let mut cursor = start;
-            while let Ok(read) = reader.read_until(b'\n', &mut line) {
-                if read == 0 || !line.ends_with(b"\n") {
-                    break;
+            if Instant::now() >= next_title_check {
+                next_title_check = Instant::now() + Duration::from_secs(2);
+                let title = databases.iter().find_map(|db| {
+                    super::antigravity::conversation_title(db, &conversation.session_id)
+                });
+                // The summary can arrive after the log or be briefly locked.
+                if title.is_some() && conversation.title != title {
+                    conversation.title = title;
+                    publish(&state, &session, conversation.clone());
                 }
-                cursor += read as u64;
-                if let Ok(text) = std::str::from_utf8(&line) {
-                    if let Some(id) = antigravity_root(text).filter(|id| *id != last) {
-                        last = id.to_owned();
-                        publish(
-                            &state,
-                            &session,
-                            Conversation {
-                                agent_id: "antigravity".into(),
-                                session_id: last.clone(),
-                                cwd: Some(cwd.clone()),
-                            },
-                        );
-                    }
-                }
-                line.clear();
             }
-            // Leave an incomplete trailing line for the next poll.
-            position = cursor;
         }
     });
+}
+
+fn read_antigravity_log(path: &Path, position: &mut u64) -> Option<String> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    if len < *position {
+        *position = 0;
+    }
+    if len == *position {
+        return None;
+    }
+    // Bound the work for large debug logs, and leave any incomplete trailing
+    // line for the next poll.
+    let start = (*position).max(len.saturating_sub(256 * 1024));
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut reader = std::io::BufReader::new(file.take(len - start));
+    *position = start;
+    let mut line = Vec::new();
+    let mut latest = None;
+    while let Ok(read) = reader.read_until(b'\n', &mut line) {
+        if read == 0 || !line.ends_with(b"\n") {
+            break;
+        }
+        *position += read as u64;
+        if let Some(id) = std::str::from_utf8(&line).ok().and_then(antigravity_root) {
+            latest = Some(id.to_owned());
+        }
+        line.clear();
+    }
+    latest
 }
 
 #[cfg(test)]
@@ -327,6 +349,28 @@ mod tests {
         assert!(antigravity_root(&format!(
             "W1123 04:04:48.236754 154 extract_searchable_content.go:253] conversationsearch: oversized step: conversation={id} step=183"
         )).is_none());
+    }
+
+    #[test]
+    fn antigravity_log_reads_the_latest_complete_conversation() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        let first = "018f3b2a-7c1d-4e0a-9b2f-1a2b3c4d5e6f";
+        let second = "018f3b2b-7c1d-4e0a-9b2f-1a2b3c4d5e6f";
+        writeln!(file, "I1123 manager.go:1] Streaming conversation {first}").unwrap();
+        write!(file, "I1123 manager.go:1] Streaming conversation {second}").unwrap();
+        let mut offset = 0;
+        assert_eq!(
+            read_antigravity_log(file.path(), &mut offset).as_deref(),
+            Some(first)
+        );
+        assert_eq!(read_antigravity_log(file.path(), &mut offset), None);
+        writeln!(file).unwrap();
+        assert_eq!(
+            read_antigravity_log(file.path(), &mut offset).as_deref(),
+            Some(second)
+        );
     }
 
     #[test]

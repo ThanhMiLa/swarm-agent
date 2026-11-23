@@ -170,8 +170,6 @@ export function TerminalPane({
       workspaceId,
       agentId: processAgentId
     })
-    // The old title no longer describes the new session.
-    useTerminalTitleStore.getState().clearTitle(terminalId)
   }, [terminalId, resolvedCwd, resolvedShellId, resolvedCommand, processAgentId, agentSelectionVersion, workspaceId])
 
   // Pull keyboard focus into xterm when this pane becomes the focused one.

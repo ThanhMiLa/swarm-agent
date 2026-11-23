@@ -186,6 +186,8 @@ interface Entry {
   host: HTMLDivElement
   session: TerminalSession
   config: AttachConfig
+  terminalTitle?: string
+  conversationTitle?: string
   /**
    * The shell's live working directory, used to resolve relative path links.
    * Seeded from the spawn cwd and updated on every OSC 7 report, because `cd`
@@ -466,9 +468,14 @@ function getOrCreate(id: string): Entry {
   // shouldn't bloat the store.
   term.onTitleChange((title) => {
     const trimmed = title.replace(/\s+/g, ' ').trim()
-    const store = useTerminalTitleStore.getState()
-    if (trimmed) store.setTitle(id, trimmed.slice(0, 120))
-    else store.clearTitle(id)
+    const entry = entries.get(id)
+    if (!entry) return
+    // Shells such as Oh My Zsh can use the launch command as a window title.
+    // It carries SwarmAgent's private log argument, so it cannot name the chat.
+    const agyLaunchTitle = entry.config.agentId === 'antigravity' &&
+      /\bagy --log-file \S*SWARM_AGENT_AGY_LOG/.test(trimmed)
+    entry.terminalTitle = agyLaunchTitle || !trimmed ? undefined : trimmed.slice(0, 120)
+    updatePaneTitle(id, entry)
   })
   // Second title listener: detection needs the RAW title (spinner prefix and
   // spacing intact), not the header's whitespace-collapsed one above.
@@ -990,7 +997,12 @@ function getOrCreate(id: string): Entry {
         entries.get(id)?.detector?.noteOutput()
       },
       write: (data, callback) => term.write(data, callback),
-      onConversation: ({ agentId, sessionId, cwd }) => {
+      onConversation: ({ agentId, sessionId, cwd, title }) => {
+        const entry = entries.get(id)
+        if (entry && agentId === 'antigravity') {
+          entry.conversationTitle = title
+          updatePaneTitle(id, entry)
+        }
         useAppStore.getState().recordPaneConversation(id, agentId, sessionId, cwd ?? undefined)
       }
     },
@@ -1107,6 +1119,7 @@ export function disposeTerminal(id: string): void {
   // store entry — order matters so the timer can't re-add a cleared id.
   activityTracker.cancel(id)
   useTerminalActivityStore.getState().clear(id)
+  useTerminalTitleStore.getState().clearTitle(id)
   useTerminalTypingStore.getState().clearTyping(id)
   useShellMarkStore.getState().clear(id)
   // …and the context chip, same reason.
@@ -1196,12 +1209,27 @@ export function getTeamComposerState(id: string, draftTail?: string): boolean {
   return isAgentComposer(entry.config.agentId, lines, { beforeCursor, expectedTail: draftTail })
 }
 
+function updatePaneTitle(id: string, entry: Entry): void {
+  const store = useTerminalTitleStore.getState()
+  const title = entry.terminalTitle ?? entry.conversationTitle
+  if (title === store.titles[id]) return
+  if (title) store.setTitle(id, title)
+  else store.clearTitle(id)
+}
+
+function resetPaneTitle(id: string, entry: Entry): void {
+  entry.terminalTitle = undefined
+  entry.conversationTitle = undefined
+  updatePaneTitle(id, entry)
+}
+
 /** Re-spawn the pty after exit/error, clearing the screen first. */
 export function retryTerminal(id: string): void {
   const entry = entries.get(id)
   if (!entry) return
   entry.scrollPolicy.clearQueue()
   entry.term.reset()
+  resetPaneTitle(id, entry)
   // The pty this segment's committed baseline described is gone.
   entry.resetInputSegment()
   // Same reasoning applies to the Agent Team typing signal: a half-typed line
@@ -1238,6 +1266,7 @@ export function respawnTerminal(id: string, config: AttachConfig): void {
   refreshDetector(id, entry)
   entry.scrollPolicy.clearQueue()
   entry.term.reset()
+  resetPaneTitle(id, entry)
   // The pty this segment's committed baseline described is gone.
   entry.resetInputSegment()
   // Same reasoning applies to the Agent Team typing signal: a half-typed line

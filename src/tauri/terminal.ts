@@ -21,7 +21,7 @@ export type PtyExit = {
 
 export type PtyOut =
   | { type: 'data'; payload: string | PtyData }
-  | { type: 'conversation'; payload: { agentId: string; sessionId: string; cwd?: string | null } }
+  | { type: 'conversation'; payload: { agentId: string; sessionId: string; cwd?: string | null; title?: string } }
   | { type: 'exit'; payload: { exitCode: number; flowId?: number } }
 
 export interface CreateTerminalOptions {

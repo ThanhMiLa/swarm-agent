@@ -5,6 +5,20 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-11-23
+
+### Fixed
+
+- Antigravity panes show the active conversation name and update it when you switch or rename conversations. Unnamed conversations display **Antigravity**, and custom terminal titles take precedence.
+
+### Changed
+
+- Refreshed the README demo and screenshots for split terminal panes, Agent Team, and token usage tracking.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.4_aarch64.dmg`, ad-hoc signed for manual installation. This build has no notarization ticket.
+
 ## [0.2.3] - 2026-11-23
 
 ### Fixed
@@ -207,6 +221,7 @@ Initial release of **SwarmAgent** — one workspace for your coding agents.
 
 - **macOS (Apple Silicon / `aarch64`)**: `SwarmAgent_0.0.1_aarch64.dmg` (unsigned / ad-hoc signed local build)
 
+[0.2.4]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.2.3...v0.2.4
 [0.1.3]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ThanhMiLa/swarm-agent/compare/v0.1.0...v0.1.1

@@ -1,6 +1,28 @@
 use super::{clean_title, is_uuid, SessionEntry};
 use rusqlite::{Connection, OpenFlags};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+pub(super) fn summary_databases(home: &Path) -> [PathBuf; 2] {
+    ["antigravity-cli", "antigravity"].map(|root| {
+        home.join(".gemini")
+            .join(root)
+            .join("conversation_summaries.db")
+    })
+}
+
+pub(super) fn conversation_title(db: &Path, id: &str) -> Option<String> {
+    let conn = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    conn.busy_timeout(std::time::Duration::ZERO).ok()?;
+    let title: String = conn
+        .query_row(
+            "SELECT title FROM conversation_summaries
+             WHERE conversation_id = ?1 AND parent_conversation_id = ''",
+            [id],
+            |row| row.get(0),
+        )
+        .ok()?;
+    clean_title(&title)
+}
 
 pub fn scan(db: &Path, folder: &Path) -> Vec<SessionEntry> {
     let Ok(conn) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY) else {
@@ -80,5 +102,21 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Payment");
         assert!(entries[0].updated_at_ms > 0);
+        assert_eq!(
+            conversation_title(&path, "018f3b2b-7c1d-4e0a-9b2f-1a2b3c4d5e6f").as_deref(),
+            Some("Other")
+        );
+        assert!(conversation_title(&path, "018f3b2c-7c1d-4e0a-9b2f-1a2b3c4d5e6f").is_none());
+        assert!(conversation_title(&path, "018f3b2d-7c1d-4e0a-9b2f-1a2b3c4d5e6f").is_none());
+        db.execute(
+            "UPDATE conversation_summaries SET title = ' Đổi tên phiên '
+             WHERE conversation_id = ?1",
+            ["018f3b2b-7c1d-4e0a-9b2f-1a2b3c4d5e6f"],
+        )
+        .unwrap();
+        assert_eq!(
+            conversation_title(&path, "018f3b2b-7c1d-4e0a-9b2f-1a2b3c4d5e6f").as_deref(),
+            Some("Đổi tên phiên")
+        );
     }
 }

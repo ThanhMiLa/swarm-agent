@@ -6,7 +6,7 @@
 
 ### Desktop workspace for multi-agent coding
 
-[![Version](https://img.shields.io/badge/version-0.1.2-22c55e)](CHANGELOG.md#012---2026-11-20)
+[![Version](https://img.shields.io/badge/version-0.2.4-22c55e)](CHANGELOG.md#024---2026-11-23)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tauri/tauri-original.svg" width="20" height="20" alt="Tauri"> <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2">
@@ -22,21 +22,19 @@
 
 </div>
 
-## Coordinate agents in one workspace
+## Features
 
-Split your workspace into terminal panes and see which agents are working,
-finished, or waiting for input. Drag **Codex**, **Antigravity**, **OpenCode**, or
-**Claude Code** panes into **Agent Team** to delegate tasks by name. Each pane
-has its own identity, so you can assign different work to `codex-1` and
-`codex-2` in the same checkout.
+### Split terminal panes and Agent Team
+
+Run agents side by side in one workspace, see their status, and delegate tasks
+across Codex, Antigravity, OpenCode, and Claude Code with **Agent Team**.
 
 <img src="docs/images/fullscreen-main-desk.png" alt="SwarmAgent workspace with four terminal panes, an Agent Team roster, and a summary of worker results" width="100%">
 
-## Track token usage
+### Token usage tracking
 
-Open **Settings → Token Usage** to review the selected workspace’s input,
-output, and cached tokens. Compare totals and estimated costs by provider,
-and use the daily breakdown to see how usage changes over time.
+Track input, output, and cached tokens by provider, with daily usage and
+estimated costs.
 
 <img src="docs/images/screen-token-usage.png" alt="SwarmAgent Token Usage settings with token counts, estimated costs, and daily usage history" width="100%">
 

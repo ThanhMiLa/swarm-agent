@@ -136,14 +136,8 @@ pub async fn list_all(folder: String) -> Vec<SessionEntry> {
             out.extend(qwen::scan(&root, &scan_folder));
         }
         if let Some(home) = home_dir() {
-            for root in ["antigravity-cli", "antigravity"] {
-                out.extend(antigravity::scan(
-                    &home
-                        .join(".gemini")
-                        .join(root)
-                        .join("conversation_summaries.db"),
-                    Path::new(&scan_folder),
-                ));
+            for db in antigravity::summary_databases(&home) {
+                out.extend(antigravity::scan(&db, Path::new(&scan_folder)));
             }
         }
         out

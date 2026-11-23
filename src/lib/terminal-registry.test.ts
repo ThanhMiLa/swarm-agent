@@ -26,6 +26,7 @@ vi.mock('@xterm/xterm', () => ({
     buffer = { active: { type: 'normal', baseY: 0 }, onBufferChange: vi.fn() }
     loadAddon(addon: { activate?: (term: unknown) => void }): void { addon.activate?.(this) }
     open = vi.fn()
+    reset = vi.fn()
     dispose = vi.fn()
     onTitleChange = vi.fn()
     onData = vi.fn((cb: (data: string) => void) => { this.dataListeners.push(cb); return { dispose: vi.fn() } })
@@ -70,6 +71,7 @@ import { useAppearanceStore } from '@/store/appearance-store'
 import { useTerminalTextStore } from '@/store/terminal-text-store'
 import { useTerminalTypingStore } from '@/store/terminal-typing-store'
 import { useTerminalScrollingStore } from '@/store/terminal-scrolling-store'
+import { useTerminalTitleStore } from '@/store/terminal-title-store'
 import {
   applyTerminalStyle,
   attachTerminal,
@@ -79,6 +81,7 @@ import {
   disposeTerminal,
   endLayoutTransition,
   refitAttachedTerminals,
+  respawnTerminal,
   suspendLayoutRefits,
   VSCODE_DARK_THEME
 } from './terminal-registry'
@@ -130,6 +133,41 @@ afterEach(() => {
   frame()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+describe('Antigravity pane titles', () => {
+  it('uses the tracked conversation title in place of the shell launch command', () => {
+    attachTerminal('agy', { appendChild: vi.fn() } as unknown as HTMLElement, {
+      agentId: 'antigravity',
+      initialCommand: 'agy --conversation previous'
+    })
+    const onOutput = vi.mocked(createTerminal).mock.lastCall![2]
+    const onTitle = mocks.terminals.at(-1).onTitleChange.mock.calls[0][0]
+    const currentTitle = () => useTerminalTitleStore.getState().titles.agy
+    const conversation = (sessionId: string, title?: string) => onOutput({
+      type: 'conversation',
+      payload: { agentId: 'antigravity', sessionId, title }
+    })
+
+    onTitle('clear; command agy --log-file "$SWARM_AGENT_AGY_LOG" --conversation previous ;')
+    expect(currentTitle()).toBeUndefined()
+    conversation('previous', 'Tích hợp VNPAY')
+    expect(currentTitle()).toBe('Tích hợp VNPAY')
+    conversation('previous', 'Đổi tên phiên')
+    expect(currentTitle()).toBe('Đổi tên phiên')
+    conversation('next')
+    expect(currentTitle()).toBeUndefined()
+    conversation('next', 'Next conversation')
+
+    onTitle('Custom terminal title')
+    expect(currentTitle()).toBe('Custom terminal title')
+    onTitle('')
+    expect(currentTitle()).toBe('Next conversation')
+
+    respawnTerminal('agy', { agentId: 'codex', initialCommand: 'codex' })
+    conversation('next', 'Stale Antigravity title')
+    expect(currentTitle()).toBeUndefined()
+  })
 })
 
 describe('iTerm2 appearance', () => {

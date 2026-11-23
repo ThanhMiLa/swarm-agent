@@ -3,10 +3,9 @@ import { create } from 'zustand'
 /**
  * Per-terminal header titles, keyed by terminalId. Runtime state that lives
  * OUTSIDE the layout tree — mirroring terminal-registry's xterm instances and
- * the terminal registry, keyed by terminalId. An agent names its own
- * pane via the `terminal.set_title` MCP tool; keying by the stable terminalId
- * means the title survives pane re-parenting (split collapse), and it is
- * cleared on respawn (agent/cwd/shell switch) so a stale title never lingers.
+ * the terminal registry, keyed by terminalId. The registry resolves titles
+ * from terminal output and tracked conversations. Titles survive pane
+ * re-parenting (split collapse) and are cleared when the terminal respawns.
  */
 export interface TerminalTitleStore {
   titles: Record<string, string>
