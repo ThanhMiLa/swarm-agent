@@ -20,7 +20,7 @@ export interface TeamTask {
 
 export interface TeamRun {
   id: string
-  leader: string
+  dispatcher: string
   plan: string
   tasks: TeamTask[]
   results: Array<{
@@ -29,7 +29,7 @@ export interface TeamRun {
     stage: 'ready' | 'pasting' | 'submitting' | 'sent' | 'closed'
     note: string | null
   }>
-  leaderTerminalId: string
+  dispatcherTerminalId: string
 }
 
 export interface Team {

@@ -289,7 +289,7 @@ impl Stage {
     }
 }
 
-const LEADER_LEFT: &str = "The original leader session is no longer in the team";
+const DISPATCHER_LEFT: &str = "The original dispatcher session is no longer in the team";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -305,8 +305,8 @@ struct ResultDelivery {
 pub struct Run {
     pub id: String,
     pub plan: String,
-    pub leader: String,
-    pub leader_terminal_id: String,
+    pub dispatcher: String,
+    pub dispatcher_terminal_id: String,
     pub tasks: Vec<Task>,
     results: Vec<ResultDelivery>,
     #[serde(skip)]
@@ -320,7 +320,7 @@ pub struct Run {
     #[serde(skip)]
     deadline: u64,
     #[serde(skip)]
-    leader_left: bool,
+    dispatcher_left: bool,
     #[serde(skip)]
     review_started: Option<u64>,
     #[serde(skip)]
@@ -349,12 +349,12 @@ impl Run {
         self.results.push(ResultDelivery {
             id: id(),
             task_id: task.id.clone(),
-            stage: if self.leader_left {
+            stage: if self.dispatcher_left {
                 Stage::Closed
             } else {
                 Stage::Ready
             },
-            note: self.leader_left.then(|| LEADER_LEFT.to_owned()),
+            note: self.dispatcher_left.then(|| DISPATCHER_LEFT.to_owned()),
         });
     }
 
@@ -615,11 +615,11 @@ impl AgentTeams {
             changed |= before != team.members.len();
             for run in &mut team.runs {
                 if &run.origin == session && run.active() {
-                    run.leader_left = true;
+                    run.dispatcher_left = true;
                     for result in &mut run.results {
                         if result.stage.pending() {
                             result.stage = Stage::Closed;
-                            result.note = Some(LEADER_LEFT.into());
+                            result.note = Some(DISPATCHER_LEFT.into());
                         }
                     }
                     run.review_started = None;
@@ -688,7 +688,7 @@ impl AgentTeams {
             return Err("Provide between 1 and 16 worker assignments".into());
         }
         if team.root.as_ref() != Some(&location.root) {
-            return Err("Leader is no longer in the team's Git checkout".into());
+            return Err("Dispatcher is no longer in the team's Git checkout".into());
         }
         let reserved = |session: &Session| {
             self.teams.iter().flat_map(|t| &t.runs).any(|r| {
@@ -712,7 +712,7 @@ impl AgentTeams {
                 || !targets.insert(&a.member_id)
             {
                 return Err(
-                    "Each assignment needs a different available worker other than the leader"
+                    "Each assignment needs a different available worker other than the dispatcher"
                         .into(),
                 );
             }
@@ -770,7 +770,7 @@ impl AgentTeams {
             run_id: run_id.clone(),
             task_ids: tasks.iter().map(|t| t.id.clone()).collect(),
         };
-        let leader = team
+        let dispatcher = team
             .members
             .iter()
             .find(|m| m.session == origin)
@@ -781,8 +781,8 @@ impl AgentTeams {
         self.team_mut(&team_id)?.runs.push(Run {
             id: run_id,
             plan,
-            leader,
-            leader_terminal_id: origin.terminal_id.clone(),
+            dispatcher,
+            dispatcher_terminal_id: origin.terminal_id.clone(),
             tasks,
             results: Vec::new(),
             origin,
@@ -790,7 +790,7 @@ impl AgentTeams {
             request_id,
             assignments,
             deadline: now.saturating_add(TASK_MS),
-            leader_left: false,
+            dispatcher_left: false,
             review_started: None,
             review_saw_working: false,
         });
@@ -1020,7 +1020,7 @@ impl AgentTeams {
             let index = run
                 .next_result()
                 .filter(|&i| run.results[i].id == delivery)
-                .ok_or("Result is no longer next in the leader's queue")?;
+                .ok_or("Result is no longer next in the dispatcher's queue")?;
             let result = &run.results[index];
             let stage = result.stage.advance(phase, true)?;
             let body = if phase == "paste" {
@@ -1082,7 +1082,7 @@ mod tests {
                 terminal_id: format!("{workspace_id}-{name}"),
                 generation: 1,
             };
-            let origin = session("leader");
+            let origin = session("dispatcher");
             let mut workers = Vec::new();
             for target in [origin.clone(), session("a"), session("b")] {
                 state
@@ -1328,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    fn each_worker_result_reaches_the_original_leader_in_completion_order() {
+    fn each_worker_result_reaches_the_original_dispatcher_in_completion_order() {
         let mut f = Fixture::new();
         let run = f.dispatch().unwrap();
         assert_eq!(f.dispatch().unwrap().run_id, run.run_id);
@@ -1457,13 +1457,13 @@ mod tests {
         let stored = &snapshot.teams[0].runs[0];
         assert_eq!(stored.results[0].stage, Stage::Sent);
         assert_eq!(stored.results[1].stage, Stage::Closed);
-        assert_eq!(stored.results[1].note.as_deref(), Some(LEADER_LEFT));
+        assert_eq!(stored.results[1].note.as_deref(), Some(DISPATCHER_LEFT));
         assert!(stored.tasks[0].report.is_some());
         assert_eq!(stored.tasks[1].status, Status::TimedOut);
     }
 
     #[test]
-    fn a_report_after_the_leader_leaves_stays_in_the_run() {
+    fn a_report_after_the_dispatcher_leaves_stays_in_the_run() {
         let mut f = Fixture::new();
         let run = f.dispatch().unwrap();
         let task = &run.task_ids[0];
@@ -1480,7 +1480,7 @@ mod tests {
         let stored = &snapshot.teams[0].runs[0];
         assert_eq!(stored.tasks[0].report, Some(report()));
         assert_eq!(stored.results[0].stage, Stage::Closed);
-        assert_eq!(stored.results[0].note.as_deref(), Some(LEADER_LEFT));
+        assert_eq!(stored.results[0].note.as_deref(), Some(DISPATCHER_LEFT));
     }
 
     #[test]
@@ -1662,7 +1662,7 @@ mod tests {
         assert!(reminder_body.contains("team_report_result"));
         assert!(reminder_body.ends_with(&format!("task_id {task_id}.")));
 
-        // Worker reports after the reminder, leader reviews quickly (< 500ms) and finishes run.
+        // Worker reports after the reminder, dispatcher reviews quickly (< 500ms) and finishes run.
         f.state
             .report(&worker, &run.run_id, task_id, report())
             .unwrap();
@@ -1676,7 +1676,7 @@ mod tests {
     }
 
     #[test]
-    fn worker_still_silent_after_reminder_auto_fails_and_notifies_leader() {
+    fn worker_still_silent_after_reminder_auto_fails_and_notifies_dispatcher() {
         let mut f = Fixture::new();
         let (worker, member_id) = f.workers[0].clone();
         let checked = HashMap::from([(member_id.clone(), (worker.clone(), f.git.clone()))]);
@@ -1716,7 +1716,7 @@ mod tests {
             .as_deref()
             .is_some_and(|n| n.contains("without calling team_report_result")));
 
-        // Leader receives the failure result and finishes the run without waiting 10 minutes.
+        // Dispatcher receives the failure result and finishes the run without waiting 10 minutes.
         let result = f.state.snapshot().pending.pop().unwrap();
         assert_eq!(result.target, f.origin);
         assert!(f.send(&result.id).contains("failed"));

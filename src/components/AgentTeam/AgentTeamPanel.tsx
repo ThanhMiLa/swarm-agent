@@ -11,11 +11,11 @@ import { useAgentStateStore } from '@/store/agent-state-store'
 import { AgentIcon } from '@/components/AgentIcon'
 
 const resultStatus = {
-  ready: 'Waiting for leader',
-  pasting: 'Sending to leader',
-  submitting: 'Sending to leader',
-  sent: 'Sent to leader',
-  closed: 'Could not send to leader'
+  ready: 'Waiting for dispatcher',
+  pasting: 'Sending to dispatcher',
+  submitting: 'Sending to dispatcher',
+  sent: 'Sent to dispatcher',
+  closed: 'Could not send to dispatcher'
 }
 
 type MemberStatus = 'Unsupported' | 'MCP pending' | 'Needs input' | 'Working' | 'Ready'
@@ -173,8 +173,8 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
           {runs.length === 0 && <p className="p-1 text-xs text-muted-foreground">{members.length > 0 ? 'Ask a member to delegate to start a run.' : 'Add a member to start a run.'}</p>}
           {[...runs].reverse().map((run, index) => (
             <details key={run.id} className="mb-2 rounded-md border border-border p-2 text-xs" open={index === 0}>
-              <summary className="cursor-pointer font-medium">{run.leader} · {run.results.length}/{run.tasks.length} resolved</summary>
-              <button type="button" className="my-1 rounded px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => useAppStore.getState().revealTerminal(run.leaderTerminalId)}>Open leader pane</button>
+              <summary className="cursor-pointer font-medium">{run.dispatcher} · {run.results.length}/{run.tasks.length} resolved</summary>
+              <button type="button" className="my-1 rounded px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => useAppStore.getState().revealTerminal(run.dispatcherTerminalId)}>Open dispatcher pane</button>
               <p className="whitespace-pre-wrap break-words">{run.plan}</p>
               {run.tasks.map((task) => {
                 const result = run.results.find((item) => item.taskId === task.id)

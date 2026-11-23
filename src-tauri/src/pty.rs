@@ -398,6 +398,23 @@ pub fn utf8_lang_fallback(
     }
 }
 
+/// Prefix a startup command with `command ` on POSIX/fish shells so user
+/// aliases (e.g. `alias codex='codex --dangerously-bypass-approvals-and-sandbox'`)
+/// cannot duplicate flags that SwarmAgent already passes.
+fn bypass_shell_alias<'a>(command: &'a str, shell_name: &str) -> std::borrow::Cow<'a, str> {
+    let trimmed = command.trim_start();
+    if trimmed.is_empty() || trimmed.split_whitespace().next() == Some("command") {
+        return std::borrow::Cow::Borrowed(command);
+    }
+    let stem = shell_name.split('-').next().unwrap_or(shell_name);
+    match stem {
+        "sh" | "bash" | "zsh" | "fish" | "ksh" | "mksh" | "dash" => {
+            std::borrow::Cow::Owned(format!("command {trimmed}"))
+        }
+        _ => std::borrow::Cow::Borrowed(command),
+    }
+}
+
 /// Drain the largest valid-UTF-8 prefix from `buf`, leaving any incomplete
 /// trailing multibyte sequence behind for the next read. Bytes that cannot begin
 /// or continue a valid sequence are genuinely invalid, so they are flushed
@@ -645,6 +662,7 @@ pub fn spawn_terminal(
     // Run the template's first command (clearing the screen first for the
     // platform default shell so the prompt/echo don't linger above the program).
     if let Some(ic) = startup {
+        let ic = bypass_shell_alias(&ic, &shell_name);
         let exit = if report_exit {
             match shell_name.as_str() {
                 "cmd" => " & \"%SWARM_AGENT_BIN%\" --agent-team-exited",
@@ -890,6 +908,33 @@ mod tests {
             login_args("/usr/local/bin/bash-5.2"),
             vec!["-l".to_string()]
         );
+    }
+
+    #[test]
+    fn bypass_shell_alias_prefixes_posix_and_fish_shells() {
+        let cmd = "codex --dangerously-bypass-approvals-and-sandbox";
+        for shell in [
+            "zsh", "bash", "bash-5.2", "sh", "fish", "ksh", "mksh", "dash",
+        ] {
+            assert_eq!(
+                bypass_shell_alias(cmd, shell),
+                format!("command {cmd}"),
+                "{shell}"
+            );
+        }
+    }
+
+    #[test]
+    fn bypass_shell_alias_leaves_non_posix_shells_and_idempotent_commands_alone() {
+        let cmd = "codex --dangerously-bypass-approvals-and-sandbox";
+        for shell in ["powershell", "pwsh", "cmd", "nu", "csh", "tcsh", "wsl"] {
+            assert_eq!(bypass_shell_alias(cmd, shell), cmd, "{shell}");
+        }
+        assert_eq!(
+            bypass_shell_alias("command codex --foo", "zsh"),
+            "command codex --foo"
+        );
+        assert_eq!(bypass_shell_alias("   ", "zsh"), "   ");
     }
 
     #[test]

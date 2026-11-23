@@ -5,6 +5,20 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-11-23
+
+### Changed
+
+- **Peer-based Agent Team terminology**: Renamed `leader` references to `dispatcher` across the Agent Team backend, MCP tools, UI (`AgentTeamPanel`), and documentation to reflect that all team members are peers and any member can dispatch tasks.
+
+### Fixed
+
+- **Shell alias conflict on agent startup**: Prefixed agent startup commands with `command ` on POSIX and `fish` shells in the PTY spawner so user-defined shell aliases (such as `alias codex='codex --dangerously-bypass-approvals-and-sandbox'`) do not duplicate flags already passed by SwarmAgent.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.2_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
+
 ## [0.2.1] - 2026-11-22
 
 ### Fixed

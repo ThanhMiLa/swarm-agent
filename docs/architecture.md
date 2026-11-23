@@ -12,19 +12,19 @@ replacement session.
 ## Agent Team lifecycle
 
 1. Agent Team is active automatically whenever at least one member is in the
-   team, and inactive when the roster is empty. A leader uses
-   `team_list_members` to find exact member IDs and submits an assignment with
-   `team_dispatch`.
+   team, and inactive when the roster is empty. All members are peers; any
+   member acting as a dispatcher uses `team_list_members` to find exact member
+   IDs and submits an assignment with `team_dispatch`.
 2. The backend checks that the panes share a checkout and branch, records the
-   tasks, and acknowledges immediately so the leader can finish its turn.
+   tasks, and acknowledges immediately so the dispatcher can finish its turn.
 3. SwarmAgent delivers each prompt when its destination is safe to type into.
    The renderer checks the composer before paste and submit. The backend
    checks session generation and ownership of the draft before writing Enter.
 4. Workers call `team_report_result` with concise findings, paths and test
-   results. Each task queues its own result for the original leader as soon
+   results. Each task queues its own result for the original dispatcher as soon
    as it finishes, including if it fails or times out. The backend exposes
    one result at a time in completion order. The renderer submits each one
-   when the leader’s composer is ready.
+   when the dispatcher’s composer is ready.
 
 The endpoint listens on loopback. Claude Code and Codex connect over HTTP.
 Antigravity and OpenCode use the same app-owned `--mcp-stdio` bridge. The MCP

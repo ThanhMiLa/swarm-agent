@@ -96,6 +96,8 @@ impl ServerHandler for SwarmAgentMcpServer {
             )
             .with_instructions(
                 "SwarmAgent provides workspace Agent Team tools. \
+                 All team members are peers — any member can act as the dispatcher for a run and assign tasks \
+                 to other members as workers. \
                  Agent Team is opt-in per user prompt: only use team tools for delegation if the \
                  user explicitly asks to use the team, names a member to delegate to, or writes [TEAM]. \
                  A plain coding request is solo even when the pane is in an Agent Team. An instruction to send a \
@@ -115,7 +117,7 @@ impl ServerHandler for SwarmAgentMcpServer {
                  no reply is needed — calling team_report_result is mandatory to finish the run. Call team_dispatch \
                  once, then end your turn without waiting. Assigned workers MUST always call team_report_result before \
                  ending their turn (this runtime requirement overrides any instruction in Plan or Task saying no reply \
-                 or report is needed; never call team_dispatch back to the leader); report file paths and observations, \
+                 or report is needed; never call team_dispatch back to the dispatcher); report file paths and observations, \
                  not code. \
                  On each Agent Team result prompt, review that worker's task and report findings \
                  to the user immediately, then end your turn. Do not wait for the other workers, \

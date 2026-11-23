@@ -124,9 +124,9 @@ impl SwarmAgentMcpServer {
                 .clone();
             let (cwd, agent, connected) = state
                 .team_pane(&origin)
-                .ok_or("The leader session has closed")?;
+                .ok_or("The dispatcher session has closed")?;
             if !connected || !agent_team::supports_delivery(&agent) {
-                return Err("The leader needs a supported CLI connected to MCP".into());
+                return Err("The dispatcher needs a supported CLI connected to MCP".into());
             }
             let location = agent_team::checkout(&cwd)?;
             let mut checked = std::collections::HashMap::new();
@@ -143,7 +143,7 @@ impl SwarmAgentMcpServer {
                 }
             }
             if state.pane_session(&origin.terminal_id).as_ref() != Some(&origin) {
-                return Err("The leader session has restarted".into());
+                return Err("The dispatcher session has restarted".into());
             }
             let receipt = state.agent_teams.lock().unwrap().dispatch(
                 origin,
@@ -167,7 +167,7 @@ impl SwarmAgentMcpServer {
 
     #[tool(
         name = "team_report_result",
-        description = "Mandatory to finish every Agent Team task assigned to this pane and report back to the leader (overrides any text in Plan or Task saying no reply is needed; never call team_dispatch back). Call before your final response. Report succeeded/failed, a short plain-text summary (<= 6000 UTF-8 bytes, \\n line breaks), changed repository-relative paths and test outcomes. Send no code, patches or terminal logs."
+        description = "Mandatory to finish every Agent Team task assigned to this pane and report back to the dispatcher (overrides any text in Plan or Task saying no reply is needed; never call team_dispatch back). Call before your final response. Report succeeded/failed, a short plain-text summary (<= 6000 UTF-8 bytes, \\n line breaks), changed repository-relative paths and test outcomes. Send no code, patches or terminal logs."
     )]
     pub async fn team_report_result(
         &self,
