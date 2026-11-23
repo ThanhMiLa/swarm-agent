@@ -206,13 +206,28 @@ pub fn antigravity_log_directory() -> std::io::Result<tempfile::TempDir> {
 fn antigravity_root(line: &str) -> Option<&str> {
     // This is Antigravity's local TUI metadata line, not chat text or a
     // timestamp comparison against its shared conversation store.
-    let (_, rest) = line.split_once("Recorded user message sender window \"")?;
-    let id = rest
-        .split_once("\" for root_conversation_id=\"")?
-        .1
-        .split('"')
-        .next()?;
-    valid_id("antigravity", id).then_some(id)
+    if let Some((_, rest)) = line.split_once("Recorded user message sender window \"") {
+        let id = rest
+            .split_once("\" for root_conversation_id=\"")?
+            .1
+            .split('"')
+            .next()?;
+        return valid_id("antigravity", id).then_some(id);
+    }
+    // Current Antigravity CLI releases log active conversation switches and
+    // user message dispatches via glog lines in `--log-file` rather than the
+    // older sender-window line.
+    for marker in [
+        "] Streaming conversation ",
+        "] Forwarding user message to conversation ",
+        "] Sending user message to conversation ",
+    ] {
+        if let Some((_, rest)) = line.split_once(marker) {
+            let id = rest.split_whitespace().next()?;
+            return valid_id("antigravity", id).then_some(id);
+        }
+    }
+    None
 }
 
 pub fn watch_antigravity(
@@ -301,6 +316,17 @@ mod tests {
         assert_eq!(antigravity_root(&line), Some(id));
         assert!(antigravity_root(&format!("INFO root_conversation_id=\"{id}\"")).is_none());
         assert!(antigravity_root(&line.replace(id, "invalid")).is_none());
+
+        for log_line in [
+            format!("I1123 13:36:25.782129    1337 conversation_manager.go:1269] Streaming conversation {id}"),
+            format!("I1123 13:36:34.463069    2122 conversation_manager.go:1067] Forwarding user message to conversation {id} (items=1, media=0)"),
+            format!("I1123 13:36:34.463134    2122 server.go:1883] Sending user message to conversation {id} (items=1, media=0)"),
+        ] {
+            assert_eq!(antigravity_root(&log_line), Some(id), "{log_line}");
+        }
+        assert!(antigravity_root(&format!(
+            "W1123 04:04:48.236754 154 extract_searchable_content.go:253] conversationsearch: oversized step: conversation={id} step=183"
+        )).is_none());
     }
 
     #[test]

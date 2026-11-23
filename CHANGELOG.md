@@ -5,6 +5,16 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-11-23
+
+### Fixed
+
+- **Antigravity conversation session tracking**: Updated `antigravity_root` log parsing in `src-tauri/src/sessions/tracking.rs` to detect active conversation IDs from current Antigravity CLI glog lines (`Streaming conversation`, `Forwarding user message to conversation`, and `Sending user message to conversation`) in addition to the legacy `Recorded user message sender window` format, restoring automatic session persistence across app restarts.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.3_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
+
 ## [0.2.2] - 2026-11-23
 
 ### Changed
