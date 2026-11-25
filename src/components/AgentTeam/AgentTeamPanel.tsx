@@ -171,14 +171,30 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
           })}
         </> : <>
           {runs.length === 0 && <p className="p-1 text-xs text-muted-foreground">{members.length > 0 ? 'Ask a member to delegate to start a run.' : 'Add a member to start a run.'}</p>}
-          {[...runs].reverse().map((run, index) => (
-            <details key={run.id} className="mb-2 rounded-md border border-border p-2 text-xs" open={index === 0}>
-              <summary className="cursor-pointer font-medium">{run.dispatcher} · {run.results.length}/{run.tasks.length} resolved</summary>
-              <button type="button" className="my-1 rounded px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => useAppStore.getState().revealTerminal(run.dispatcherTerminalId)}>Open dispatcher pane</button>
-              <p className="whitespace-pre-wrap break-words">{run.plan}</p>
-              {run.tasks.map((task) => {
-                const result = run.results.find((item) => item.taskId === task.id)
-                return (
+          {[...runs].reverse().map((run, index) => {
+            const resolvedCount = run.tasks.filter((task) => task.status !== 'queued' && task.status !== 'running').length
+            const unfinishedCount = run.tasks.length - resolvedCount
+            return (
+              <details key={run.id} className="mb-2 rounded-md border border-border p-2 text-xs" open={index === 0}>
+                <summary className="cursor-pointer font-medium">{run.dispatcher} · {resolvedCount}/{run.tasks.length} resolved</summary>
+                <div className="my-1 flex flex-wrap items-center gap-1">
+                  <button type="button" className="rounded px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => useAppStore.getState().revealTerminal(run.dispatcherTerminalId)}>Open dispatcher pane</button>
+                  {!run.result && resolvedCount > 0 && unfinishedCount > 0 && (
+                    <button
+                      type="button"
+                      className="rounded px-1 py-0.5 text-primary hover:bg-accent"
+                      title="Stop waiting for unfinished workers and send available results to the dispatcher now"
+                      onClick={() => void update({ kind: 'deliverRunNow', teamId: workspaceId, runId: run.id })}
+                    >Send results now</button>
+                  )}
+                </div>
+                {run.result ? (
+                  <p className="mb-1 text-muted-foreground">{holds[run.result.id] ?? run.result.note ?? resultStatus[run.result.stage]}</p>
+                ) : resolvedCount > 0 && unfinishedCount > 0 ? (
+                  <p className="mb-1 text-muted-foreground">Waiting for remaining workers ({resolvedCount}/{run.tasks.length} finished)</p>
+                ) : null}
+                <p className="whitespace-pre-wrap break-words">{run.plan}</p>
+                {run.tasks.map((task) => (
                   <div key={task.id} className="mt-2 border-t border-border pt-2">
                     <p className="font-medium">{task.worker} · {task.status.replace('_', ' ')}</p>
                     <p className="break-words text-muted-foreground">{task.scope.length ? task.scope.join(', ') : 'Read-only'}</p>
@@ -188,14 +204,11 @@ export function AgentTeamPanel({ workspaceId, dropActive }: { workspaceId: strin
                       {task.report.files.map((path, index) => <p key={index} className="break-words font-mono">{path}</p>)}
                       {task.report.tests.map((test, index) => <p key={index} className="break-words">{test}</p>)}
                     </>}
-                    {result && (
-                      <p className="mt-1 text-muted-foreground">{holds[result.id] ?? result.note ?? resultStatus[result.stage]}</p>
-                    )}
                   </div>
-                )
-              })}
-            </details>
-          ))}
+                ))}
+              </details>
+            )
+          })}
         </>}
       </div>
     </section>

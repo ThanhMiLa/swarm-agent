@@ -103,7 +103,7 @@ impl SwarmAgentMcpServer {
 
     #[tool(
         name = "team_dispatch",
-        description = "ONLY when the user requests team work, names agents to delegate to, or includes [TEAM]. Resolve exact member IDs via team_list_members. Ask before dispatching if names are ambiguous. Plan first and give each editing task a distinct repository-relative file scope in the shared checkout. Use scope [] for read-only tasks (summaries, reviews, handoffs, greetings, or confirmations). Always use a fresh request_id for new or modified work. Keep plan <= 16000 UTF-8 bytes and each prompt <= 32000 UTF-8 bytes of plain text with \\n line breaks and no ANSI/control characters (for larger handoffs, save details to a repository file and reference its path). Never instruct a worker to skip team_report_result (reporting back is mandatory to finish the run). If a validation error occurs, fix the reported field and retry once with a fresh request_id. Never substitute an external app, computer control or a new CLI if this call fails. Call once with all assignments and end your turn when acknowledged. The app sends each worker's result to your session separately as that task finishes. Never call as an assigned worker or from a review."
+        description = "ONLY when the user requests team work, names agents to delegate to, or includes [TEAM]. Resolve exact member IDs via team_list_members. Ask before dispatching if names are ambiguous. Plan first and give each editing task a distinct repository-relative file scope in the shared checkout. Use scope [] for read-only tasks (summaries, reviews, handoffs, greetings, or confirmations). Always use a fresh request_id for new or modified work. Keep plan <= 16000 UTF-8 bytes and each prompt <= 32000 UTF-8 bytes of plain text with \\n line breaks and no ANSI/control characters (for larger handoffs, save details to a repository file and reference its path). Never instruct a worker to skip team_report_result (reporting back is mandatory to finish the run). If a validation error occurs, fix the reported field and retry once with a fresh request_id. Never substitute an external app, computer control or a new CLI if this call fails. Call once with all assignments and end your turn when acknowledged. The app waits until all workers finish and sends their combined results to your session in one prompt. Never call as an assigned worker."
     )]
     pub async fn team_dispatch(
         &self,
@@ -161,7 +161,7 @@ impl SwarmAgentMcpServer {
         Ok(Json(DispatchResponse {
             receipt,
             instruction:
-                "End your turn now. The app will send each worker's result separately as that task finishes.",
+                "End your turn now. The app will send the combined worker results once all tasks finish.",
         }))
     }
 

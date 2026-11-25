@@ -21,10 +21,10 @@ replacement session.
    The renderer checks the composer before paste and submit. The backend
    checks session generation and ownership of the draft before writing Enter.
 4. Workers call `team_report_result` with concise findings, paths and test
-   results. Each task queues its own result for the original dispatcher as soon
-   as it finishes, including if it fails or times out. The backend exposes
-   one result at a time in completion order. The renderer submits each one
-   when the dispatcher’s composer is ready.
+   results. Once every task in the run finishes (including failures or
+   timeouts), SwarmAgent queues a single combined result prompt for the
+   original dispatcher. The renderer submits it when the dispatcher’s composer
+   is ready.
 
 The endpoint listens on loopback. Claude Code and Codex connect over HTTP.
 Antigravity and OpenCode use the same app-owned `--mcp-stdio` bridge. The MCP

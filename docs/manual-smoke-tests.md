@@ -119,7 +119,7 @@ workspace code. Start with `npm run tauri dev`.
 
 - [ ] Add three out of four Codex panes in the same checkout. Confirm the count, exact routing by name, duplicate name rejection and stable aliases after removal.
 - [ ] Add members to the team (automatically active when non-empty; inactive when empty). A plain prompt stays solo. An explicit team request dispatches once and returns the dispatcher to its input before all workers finish.
-- [ ] Use each of Claude Code, Codex, Antigravity and OpenCode as a dispatcher and a worker. Hold one worker back and confirm the original dispatcher receives and reviews the other result immediately. If a second result arrives during that review, confirm it starts its own turn after the dispatcher returns to the composer. Reports contain paths and tests, while code appears in the current checkout.
+- [ ] Use each of Claude Code, Codex, Antigravity and OpenCode as a dispatcher and a worker. Hold one worker back and confirm **Runs** shows the finished worker's report immediately while the dispatcher waits until all workers finish (or **Send results now** is clicked) before receiving one combined review prompt. Reports contain paths and tests, while code appears in the current checkout.
 - [ ] Switch tabs or hide the panel during a run. Confirm delivery still works. Check that a typed draft, a permission prompt and a restarted pane prevent automated input into the wrong place.
 - [ ] Close a worker or wait for timeout. Confirm partial reports remain available. Close the dispatcher and verify no other pane receives review.
 - [ ] Try a linked worktree, remove all members to leave the team empty, and change branches during a queued handoff. Check the resulting rejection or visible status.

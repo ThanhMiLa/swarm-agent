@@ -23,12 +23,11 @@ export interface TeamRun {
   dispatcher: string
   plan: string
   tasks: TeamTask[]
-  results: Array<{
+  result: {
     id: string
-    taskId: string
     stage: 'ready' | 'pasting' | 'submitting' | 'sent' | 'closed'
     note: string | null
-  }>
+  } | null
   dispatcherTerminalId: string
 }
 
@@ -60,6 +59,7 @@ type Edit =
   | { kind: 'join'; teamId: string; terminalId: string }
   | { kind: 'leave'; terminalId: string }
   | { kind: 'renameMember'; teamId: string; memberId: string; name: string }
+  | { kind: 'deliverRunNow'; teamId: string; runId: string }
 
 export const teamSnapshot = (): Promise<TeamSnapshot> => invoke('team_snapshot')
 export const clearTeamRuns = (workspaceId?: string): Promise<number> =>

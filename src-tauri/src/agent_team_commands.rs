@@ -79,6 +79,10 @@ pub enum Edit {
         member_id: String,
         name: String,
     },
+    DeliverRunNow {
+        team_id: String,
+        run_id: String,
+    },
 }
 
 #[tauri::command]
@@ -141,6 +145,7 @@ pub async fn team_edit(app: AppHandle, edit: Edit) -> Result<(), String> {
                 member_id,
                 name,
             } => teams.rename_member(&team_id, &member_id, &name),
+            Edit::DeliverRunNow { team_id, run_id } => teams.deliver_now(&team_id, &run_id),
             Edit::Leave { .. } => {
                 if let Some(session) = session {
                     teams.leave(&session);

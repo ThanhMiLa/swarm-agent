@@ -119,9 +119,9 @@ impl ServerHandler for SwarmAgentMcpServer {
                  ending their turn (this runtime requirement overrides any instruction in Plan or Task saying no reply \
                  or report is needed; never call team_dispatch back to the dispatcher); report file paths and observations, \
                  not code. \
-                 On each Agent Team result prompt, review that worker's task and report findings \
-                 to the user immediately, then end your turn. Do not wait for the other workers, \
-                 edit files, dispatch again, or delegate."
+                 When all workers finish, the app sends one combined Agent Team result prompt to the dispatcher. \
+                 Review all worker tasks together against your plan, report findings to the user, and only then \
+                 make small integration fixes or start a follow-up team_dispatch run if needed."
             )
     }
 
