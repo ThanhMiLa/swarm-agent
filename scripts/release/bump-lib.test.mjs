@@ -19,6 +19,14 @@ describe('bumpCargoLock', () => {
     expect(out).toContain('name = "serde"\nversion = "1.0.0"')
     expect(out).toContain('name = "swarm-agent"\nversion = "0.2.0"')
   })
+
+  it('handles CRLF line endings in Cargo.lock on Windows', () => {
+    const lock =
+      '[[package]]\r\nname = "serde"\r\nversion = "1.0.0"\r\n\r\n[[package]]\r\nname = "swarm-agent"\r\nversion = "0.1.0"\r\n'
+    const out = bumpCargoLock(lock, '0.2.0')
+    expect(out).toContain('name = "serde"\r\nversion = "1.0.0"')
+    expect(out).toContain('name = "swarm-agent"\r\nversion = "0.2.0"')
+  })
 })
 
 describe('bumpJson', () => {

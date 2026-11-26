@@ -11,4 +11,7 @@ export const bumpCargoToml = (text, version) =>
   text.replace(/^(version\s*=\s*")[^"]+(")/m, `$1${version}$2`)
 
 export const bumpCargoLock = (text, version) =>
-  text.replace(/(\[\[package\]\]\nname = "swarm-agent"\nversion = ")[^"]+(")/, `$1${version}$2`)
+  text.replace(
+    /(\[\[package\]\]\r?\nname = "swarm-agent"\r?\nversion = ")[^"]+(")/,
+    `$1${version}$2`
+  )
