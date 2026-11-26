@@ -1,0 +1,234 @@
+name: Build macOS Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Attach the built .dmg directly to the GitHub Release'
+        required: false
+        type: boolean
+        default: true
+      publish_release:
+        description: 'Publish the GitHub Release (instead of leaving it as a draft)'
+        required: false
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Optional GitHub release tag (defaults to v<version> from tauri.conf.json)'
+        required: false
+        type: string
+        default: ''
+      run_cargo_tests:
+        description: 'Run cargo fmt, clippy, and cargo test before building'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-macos:
+    name: Build & Publish macOS DMG (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release build target
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_UPLOAD_TO_RELEASE: ${{ inputs.upload_to_release }}
+          INPUT_PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          set -euo pipefail
+          version="$(node -e "console.log(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version)")"
+          if [ -z "$version" ]; then
+            echo "Missing version in src-tauri/tauri.conf.json" >&2
+            exit 1
+          fi
+          asset_name="SwarmAgent_${version}_aarch64.dmg"
+          default_tag="v${version}"
+          should_build="true"
+          upload_to_release="true"
+          publish_release="true"
+          target_tag="$default_tag"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$INPUT_UPLOAD_TO_RELEASE" = "false" ] && upload_to_release="false"
+            [ "$INPUT_PUBLISH_RELEASE" = "false" ] && publish_release="false"
+            custom_tag="$(printf '%s' "$INPUT_RELEASE_TAG" | xargs)"
+            if [ -n "$custom_tag" ]; then
+              if [ "$custom_tag" != "$default_tag" ]; then
+                echo "release_tag '$custom_tag' does not match src-tauri/tauri.conf.json version '$default_tag'" >&2
+                exit 1
+              fi
+              target_tag="$custom_tag"
+            fi
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            target_tag="$GITHUB_REF_NAME"
+            if [ "$target_tag" != "$default_tag" ]; then
+              echo "Git tag '$target_tag' does not match src-tauri/tauri.conf.json version '$default_tag'" >&2
+              exit 1
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if release_json="$(gh release view "$default_tag" --repo "$GITHUB_REPOSITORY" --json assets 2>/dev/null)"; then
+              if printf '%s' "$release_json" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.exit((d.assets||[]).some(a=>a.name===process.argv[1])?0:1)" "$asset_name"; then
+                echo "Release $default_tag already contains $asset_name; skipping automatic macOS release build."
+                should_build="false"
+              else
+                echo "Release $default_tag exists without $asset_name; building and attaching automatically."
+              fi
+            else
+              echo "Release $default_tag does not exist yet; skipping automatic macOS release build."
+              should_build="false"
+            fi
+          fi
+
+          {
+            echo "version=$version"
+            echo "asset_name=$asset_name"
+            echo "target_tag=$target_tag"
+            echo "should_build=$should_build"
+            echo "upload_to_release=$upload_to_release"
+            echo "publish_release=$publish_release"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          targets: aarch64-apple-darwin
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          workspaces: src-tauri
+
+      - name: Install Node dependencies
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        run: npm ci
+
+      - name: Type-check frontend
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        run: npx tsc --noEmit
+
+      - name: Test frontend
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        run: npm test
+
+      - name: Check Rust formatting
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy Rust
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test Rust
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build, ad-hoc sign, and package DMG
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          npx tauri build --target aarch64-apple-darwin --bundles app
+          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/SwarmAgent.app"
+          test -d "$APP"
+
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          bundle_ver="$(defaults read "$(pwd)/$APP/Contents/Info" CFBundleShortVersionString)"
+          if [ "$bundle_ver" != "$APP_VERSION" ]; then
+            echo "Bundle version mismatch: got '$bundle_ver', expected '$APP_VERSION'" >&2
+            exit 1
+          fi
+          file "$APP/Contents/MacOS/swarm-agent"
+
+          STAGE="$(mktemp -d)"
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          mkdir -p "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg"
+          DMG="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${ASSET_NAME}"
+          hdiutil create -volname "SwarmAgent" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          rm -rf "$STAGE"
+          ls -lh "$DMG"
+
+      - name: Upload installer artifact
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwarmAgent-${{ steps.meta.outputs.version }}-macos-aarch64-dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${{ steps.meta.outputs.asset_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload DMG to GitHub Release
+        if: ${{ steps.meta.outputs.should_build == 'true' && steps.meta.outputs.upload_to_release == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_TAG: ${{ steps.meta.outputs.target_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
+        run: |
+          set -euo pipefail
+          DMG="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${ASSET_NAME}"
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          node - "$NOTES_FILE" << 'EOF'
+          const fs = require('fs');
+          const ver = process.env.APP_VERSION;
+          const lines = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n').split('\n');
+          const start = lines.findIndex((l) => l.startsWith(`## [${ver}]`));
+          let notes = '';
+          if (start !== -1) {
+            let end = lines.findIndex((l, i) => i > start && (l.startsWith('## [') || /^\[[^\]]+\]:/.test(l)));
+            if (end === -1) end = lines.length;
+            notes = lines.slice(start + 1, end).join('\n').trim();
+          }
+          fs.writeFileSync(process.argv[2], notes ? notes + '\n' : '');
+          EOF
+
+          if view_json="$(gh release view "$TARGET_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft 2>/dev/null)"; then
+            is_draft="$(printf '%s' "$view_json" | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).isDraft)")"
+          else
+            gh release create "$TARGET_TAG" --repo "$GITHUB_REPOSITORY" --draft --title "SwarmAgent $TARGET_TAG" --notes-file "$NOTES_FILE"
+            is_draft="true"
+          fi
+
+          gh release upload "$TARGET_TAG" "$DMG" --repo "$GITHUB_REPOSITORY" --clobber
+
+          if [ -s "$NOTES_FILE" ]; then
+            gh release edit "$TARGET_TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES_FILE"
+          fi
+          if [ "$PUBLISH_RELEASE" = "true" ] && [ "$is_draft" = "true" ]; then
+            gh release edit "$TARGET_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi

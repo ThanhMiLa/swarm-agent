@@ -86,6 +86,7 @@ jobs:
             $ErrorActionPreference = "Continue"
             $releaseJson = gh release view $defaultTag --repo $env:GITHUB_REPOSITORY --json assets 2>$null
             $viewExit = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
             $ErrorActionPreference = $prevPref
             if ($viewExit -ne 0 -or -not $releaseJson) {
               Write-Host "Release $defaultTag does not exist yet; skipping automatic Windows release build."
