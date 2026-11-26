@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Automated Windows NSIS installer builds (`SwarmAgent_<version>_x64-setup.exe`) and GitHub Release publishing via `.github/workflows/release-windows.yml`.
+- Automated Windows NSIS installer builds (`SwarmAgent_<version>_x64-setup.exe`) and macOS Apple Silicon DMG builds (`SwarmAgent_<version>_aarch64.dmg`) with GitHub Release publishing via `.github/workflows/release-windows.yml` and `.github/workflows/release-macos.yml`.
+- Updated the Windows version bump script (`scripts/bump-version.mjs`, `scripts/release/bump-lib.mjs`) to handle CRLF line endings in `Cargo.lock`.
 
 ### Fixed
 
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release Downloads
 
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.7_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
 - **Windows (x64)** — `SwarmAgent_0.2.7_x64-setup.exe` (unsigned NSIS installer; click **More info → Run anyway** on SmartScreen, or turn off Smart App Control if enabled on Windows 11).
 
 ## [0.2.6] - 2026-11-26
