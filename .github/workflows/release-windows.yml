@@ -1,10 +1,18 @@
 name: Build Windows Installer
 
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
+      upload_to_release:
+        description: 'Attach the built .exe directly to the GitHub Release'
+        required: false
+        type: boolean
+        default: true
       release_tag:
-        description: 'Optional GitHub release tag (e.g. v0.2.6) to attach the .exe. Leave blank for artifact only.'
+        description: 'Optional GitHub release tag (defaults to v<version> from tauri.conf.json)'
         required: false
         type: string
         default: ''
@@ -12,110 +20,170 @@ on:
         description: 'Run cargo fmt, clippy, and cargo test before building'
         required: false
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-windows:
-    name: Build NSIS Installer (Windows x64)
+    name: Build & Publish Windows Installer
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Read app version
+      - name: Determine release build target
         id: meta
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_UPLOAD_TO_RELEASE: ${{ inputs.upload_to_release }}
         run: |
           $version = (Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
           if (-not $version) {
             throw "Missing version in src-tauri/tauri.conf.json"
           }
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          $tag = $env:RELEASE_TAG.Trim()
-          if ($tag -and ($tag -ne "v$version")) {
-            throw "release_tag '$tag' does not match src-tauri/tauri.conf.json version 'v$version'"
+          $assetName = "SwarmAgent_${version}_x64-setup.exe"
+          $defaultTag = "v$version"
+          $shouldBuild = $true
+          $uploadToRelease = $true
+          $targetTag = $defaultTag
+
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $uploadToRelease = ($env:INPUT_UPLOAD_TO_RELEASE -ne "false")
+            $customTag = ("$($env:INPUT_RELEASE_TAG)").Trim()
+            if ($customTag) {
+              if ($customTag -ne $defaultTag) {
+                throw "release_tag '$customTag' does not match src-tauri/tauri.conf.json version '$defaultTag'"
+              }
+              $targetTag = $customTag
+            }
+          } elseif ($env:GITHUB_REF -like "refs/tags/*") {
+            $targetTag = $env:GITHUB_REF_NAME
+            if ($targetTag -ne $defaultTag) {
+              throw "Git tag '$targetTag' does not match src-tauri/tauri.conf.json version '$defaultTag'"
+            }
+          } elseif ($env:EVENT_NAME -eq "push") {
+            # On pushes to main, build and attach automatically only if the matching
+            # GitHub release already exists and does not yet have the Windows .exe.
+            $prevPref = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            $releaseJson = gh release view $defaultTag --repo $env:GITHUB_REPOSITORY --json assets 2>$null
+            $viewExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevPref
+            if ($viewExit -ne 0 -or -not $releaseJson) {
+              Write-Host "Release $defaultTag does not exist yet; skipping automatic Windows release build."
+              $shouldBuild = $false
+            } else {
+              $releaseObj = $releaseJson | ConvertFrom-Json
+              $assetNames = @($releaseObj.assets | ForEach-Object { $_.name })
+              if ($assetNames -contains $assetName) {
+                Write-Host "Release $defaultTag already contains $assetName; skipping automatic Windows release build."
+                $shouldBuild = $false
+              } else {
+                Write-Host "Release $defaultTag exists without $assetName; building and attaching automatically."
+              }
+            }
           }
 
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "target_tag=$targetTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "should_build=$($shouldBuild.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "upload_to_release=$($uploadToRelease.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/setup-node@v4
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        with:
+          workspaces: src-tauri
+
       - name: Install Node dependencies
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
         run: npm ci
 
       - name: Type-check frontend
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
         run: npx tsc --noEmit
 
       - name: Test frontend
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
         run: npm test
 
       - name: Check Rust formatting
-        if: ${{ inputs.run_cargo_tests }}
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
         working-directory: src-tauri
         run: cargo fmt --check
 
       - name: Clippy Rust
-        if: ${{ inputs.run_cargo_tests }}
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Test Rust
-        if: ${{ inputs.run_cargo_tests }}
+        if: ${{ steps.meta.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_cargo_tests) }}
         working-directory: src-tauri
         run: cargo test
 
       - name: Build NSIS installer
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
         shell: pwsh
         env:
-          APP_VERSION: ${{ steps.meta.outputs.version }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
         run: |
           npx tauri build --bundles nsis
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $setup = "src-tauri/target/release/bundle/nsis/SwarmAgent_${env:APP_VERSION}_x64-setup.exe"
+          $setup = "src-tauri/target/release/bundle/nsis/$($env:ASSET_NAME)"
           if (-not (Test-Path $setup)) {
             throw "Expected NSIS installer not found at: $setup"
           }
           Get-Item $setup | Select-Object FullName, Length
 
       - name: Upload installer artifact
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: SwarmAgent-${{ steps.meta.outputs.version }}-windows-x64-setup
-          path: src-tauri/target/release/bundle/nsis/SwarmAgent_${{ steps.meta.outputs.version }}_x64-setup.exe
+          path: src-tauri/target/release/bundle/nsis/${{ steps.meta.outputs.asset_name }}
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload installer to GitHub Release
-        if: ${{ inputs.release_tag != '' }}
+        if: ${{ steps.meta.outputs.should_build == 'true' && steps.meta.outputs.upload_to_release == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          APP_VERSION: ${{ steps.meta.outputs.version }}
+          TARGET_TAG: ${{ steps.meta.outputs.target_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
         run: |
-          $tag = $env:RELEASE_TAG.Trim()
-          $setup = "src-tauri/target/release/bundle/nsis/SwarmAgent_${env:APP_VERSION}_x64-setup.exe"
+          $tag = $env:TARGET_TAG
+          $setup = "src-tauri/target/release/bundle/nsis/$($env:ASSET_NAME)"
           $prevPref = $ErrorActionPreference
           $ErrorActionPreference = "Continue"
-          gh release view $tag 2>&1 | Out-Null
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>&1 | Out-Null
           $exists = ($LASTEXITCODE -eq 0)
           $ErrorActionPreference = $prevPref
           if (-not $exists) {
-            gh release create $tag --draft --title $tag --notes ""
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --draft --title $tag --notes ""
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          gh release upload $tag $setup --clobber
+          gh release upload $tag $setup --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

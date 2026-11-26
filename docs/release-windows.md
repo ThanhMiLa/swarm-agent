@@ -58,12 +58,12 @@ updater signing keys (matching manual macOS DMG releases):
 
 - **Locally on Windows:** run `npx tauri build --bundles nsis` (requires Rust,
   VS Build Tools C++, and `npm install`).
-- **Via GitHub Actions:** trigger the **Build Windows Installer** workflow
-  ([`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml))
-  manually from the Actions tab (`workflow_dispatch`). Leave `release_tag`
-  empty to download the `.exe` from the workflow artifact for local testing, or
-  pass `v<version>` (e.g. `v0.2.6`) to attach it directly to that GitHub
-  Release (creating a draft if the release does not exist yet).
+- **Via GitHub Actions:** [`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml)
+  builds `SwarmAgent_<version>_x64-setup.exe` on `windows-latest` and attaches
+  it to the matching `v<version>` GitHub Release automatically on `v*` tag
+  pushes (or on `main` pushes when that release exists without the Windows
+  installer). You can also run it manually from the Actions tab
+  (`workflow_dispatch`).
 
 ## SmartScreen: what unsigned means
 
