@@ -1,0 +1,121 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional GitHub release tag (e.g. v0.2.6) to attach the .exe. Leave blank for artifact only.'
+        required: false
+        type: string
+        default: ''
+      run_cargo_tests:
+        description: 'Run cargo fmt, clippy, and cargo test before building'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build NSIS Installer (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Read app version
+        id: meta
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $version = (Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+          if (-not $version) {
+            throw "Missing version in src-tauri/tauri.conf.json"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $tag = $env:RELEASE_TAG.Trim()
+          if ($tag -and ($tag -ne "v$version")) {
+            throw "release_tag '$tag' does not match src-tauri/tauri.conf.json version 'v$version'"
+          }
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Type-check frontend
+        run: npx tsc --noEmit
+
+      - name: Test frontend
+        run: npm test
+
+      - name: Check Rust formatting
+        if: ${{ inputs.run_cargo_tests }}
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy Rust
+        if: ${{ inputs.run_cargo_tests }}
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test Rust
+        if: ${{ inputs.run_cargo_tests }}
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build NSIS installer
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          npx tauri build --bundles nsis
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = "src-tauri/target/release/bundle/nsis/SwarmAgent_${env:APP_VERSION}_x64-setup.exe"
+          if (-not (Test-Path $setup)) {
+            throw "Expected NSIS installer not found at: $setup"
+          }
+          Get-Item $setup | Select-Object FullName, Length
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwarmAgent-${{ steps.meta.outputs.version }}-windows-x64-setup
+          path: src-tauri/target/release/bundle/nsis/SwarmAgent_${{ steps.meta.outputs.version }}_x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload installer to GitHub Release
+        if: ${{ inputs.release_tag != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          $tag = $env:RELEASE_TAG.Trim()
+          $setup = "src-tauri/target/release/bundle/nsis/SwarmAgent_${env:APP_VERSION}_x64-setup.exe"
+          $prevPref = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          gh release view $tag 2>&1 | Out-Null
+          $exists = ($LASTEXITCODE -eq 0)
+          $ErrorActionPreference = $prevPref
+          if (-not $exists) {
+            gh release create $tag --draft --title $tag --notes ""
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          gh release upload $tag $setup --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

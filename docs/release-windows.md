@@ -51,6 +51,20 @@ the version from `tauri.conf.json`. Output lands in
 To sanity-check the installer locally: run it (per-user install, no admin
 prompt), launch SwarmAgent, then uninstall via Settings → Apps.
 
+## Manual unsigned build (no auto-updater)
+
+To build an unsigned `SwarmAgent_<version>_x64-setup.exe` without setting up
+updater signing keys (matching manual macOS DMG releases):
+
+- **Locally on Windows:** run `npx tauri build --bundles nsis` (requires Rust,
+  VS Build Tools C++, and `npm install`).
+- **Via GitHub Actions:** trigger the **Build Windows Installer** workflow
+  ([`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml))
+  manually from the Actions tab (`workflow_dispatch`). Leave `release_tag`
+  empty to download the `.exe` from the workflow artifact for local testing, or
+  pass `v<version>` (e.g. `v0.2.6`) to attach it directly to that GitHub
+  Release (creating a draft if the release does not exist yet).
+
 ## SmartScreen: what unsigned means
 
 Windows does not block unsigned apps — it warns. A user downloading the
