@@ -1,7 +1,7 @@
 {
   "name": "swarm-agent",
   "private": true,
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Desktop terminals and cross-CLI coordination for AI coding agents",
   "license": "GPL-3.0-only",
   "author": "ThanhMiLa",

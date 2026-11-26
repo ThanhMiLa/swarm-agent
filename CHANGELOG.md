@@ -5,6 +5,16 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-11-26
+
+### Changed
+
+- Reduced iTerm2 Dark terminal font weights to 400 for normal text and 700 for bold text. Line height remains 1.0.
+
+### Release Downloads
+
+- **macOS (Apple Silicon)** — `SwarmAgent_0.2.6_aarch64.dmg`, ad-hoc signed for manual installation; not notarized.
+
 ## [0.2.4] - 2026-11-23
 
 ### Fixed

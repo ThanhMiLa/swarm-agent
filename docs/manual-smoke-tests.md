@@ -90,8 +90,8 @@ workspace code. Start with `npm run tauri dev`.
 - [ ] Settings → Appearance: select **iTerm2 Dark**. Verify open and new panes use
       the dark palette and orange, steady cursor; switch back to restore the previous theme.
 - [ ] With the same terminal font and size, switch in and out of **iTerm2 Dark**.
-      Check that normal glyphs look slightly heavier and dark text is easier
-      to read, including low-contrast truecolor text.
+      Check that normal glyphs use regular strokes, bold text remains distinct,
+      and low-contrast truecolor text is readable. Line height stays unchanged.
 - [ ] Appearance shows only theme cards, including for iTerm2 Dark. WebGL is
       preferred (falling back to DOM when unavailable), even after upgrading from
       a version with DOM selected. Switching themes keeps the terminal font setting.

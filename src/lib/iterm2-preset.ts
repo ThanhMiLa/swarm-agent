@@ -31,11 +31,11 @@ export const ITERM2_DARK_THEME = {
   brightWhite: '#f8f8f2'
 } as const satisfies ITheme
 
-/** Separate normal and bold weights compensate for thinner WebView strokes.
+/** Standard normal and bold weights keep terminal text readable without heavy strokes.
  * The contrast floor also catches low-contrast RGB colors from terminal apps. */
 export const ITERM2_RENDERING = {
-  fontWeight: 800,
-  fontWeightBold: 1000,
+  fontWeight: 400,
+  fontWeightBold: 700,
   minimumContrastRatio: 4
 } as const satisfies Pick<ITerminalOptions, 'fontWeight' | 'fontWeightBold' | 'minimumContrastRatio'>
 

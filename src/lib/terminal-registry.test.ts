@@ -171,7 +171,7 @@ describe('Antigravity pane titles', () => {
 })
 
 describe('iTerm2 appearance', () => {
-  it('applies the richer rendering to both live and new terminals without changing text prefs', () => {
+  it('applies standard font weights to both live and new terminals without changing text prefs', () => {
     const term = mocks.terminals[0]
     const { style, setStyle } = useAppearanceStore.getState()
     const text = useTerminalTextStore.getState().text
@@ -183,8 +183,8 @@ describe('iTerm2 appearance', () => {
         expect(entry.options).toMatchObject({
           theme: ITERM2_DARK_THEME,
           cursorBlink: false,
-          fontWeight: 800,
-          fontWeightBold: 1000,
+          fontWeight: 400,
+          fontWeightBold: 700,
           minimumContrastRatio: 4,
           fontFamily: text.fontFamily,
           fontSize: text.fontSize,
