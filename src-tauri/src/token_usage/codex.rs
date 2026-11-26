@@ -358,7 +358,7 @@ mod tests {
         assert_eq!(t.turn_key, "codex:sess-123:turn-1");
         assert_eq!(t.agent_id, "codex");
         assert_eq!(t.model, "gpt-6.1-sol (high)");
-        assert_eq!(t.project_path, "/Users/test/my-project");
+        assert_eq!(t.project_path, normalize_path("/Users/test/my-project"));
         assert_eq!(t.input_tokens, 4231); // 17287 - 13056
         assert_eq!(t.cache_tokens, 13056);
         assert_eq!(t.output_tokens, 220);

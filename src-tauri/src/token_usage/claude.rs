@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(t.turn_key, "claude-code:session-abc:turn-1");
         assert_eq!(t.agent_id, "claude-code");
         assert_eq!(t.model, "claude-sonnet-4-6");
-        assert_eq!(t.project_path, "/Users/test/project-a");
+        assert_eq!(t.project_path, normalize_path("/Users/test/project-a"));
         assert_eq!(t.input_tokens, 1000);
         assert_eq!(t.cache_tokens, 5500);
         assert_eq!(t.output_tokens, 250);
