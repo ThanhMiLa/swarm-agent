@@ -5,6 +5,26 @@ All notable changes to **SwarmAgent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-11-27
+
+### Added
+
+- Automated Windows NSIS installer builds (`SwarmAgent_<version>_x64-setup.exe`) and GitHub Release publishing via `.github/workflows/release-windows.yml`.
+
+### Fixed
+
+- Fixed Windows Clippy `chunks_exact_to_as_chunks` warning in `src-tauri/src/shell.rs`.
+- Embedded the Windows Common Controls v6 application manifest (`src-tauri/windows-app-manifest.xml`) via `src-tauri/build.rs` so `cargo test` harnesses run cleanly without `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`).
+- Normalized expected project paths in Windows `token_usage` unit tests (`claude.rs`, `codex.rs`).
+
+### Changed
+
+- Updated `README.md` and `docs/release-windows.md` with Windows x64 download instructions, GitHub Actions release flow, and SmartScreen / Smart App Control notes.
+
+### Release Downloads
+
+- **Windows (x64)** — `SwarmAgent_0.2.7_x64-setup.exe` (unsigned NSIS installer; click **More info → Run anyway** on SmartScreen, or turn off Smart App Control if enabled on Windows 11).
+
 ## [0.2.6] - 2026-11-26
 
 ### Changed
