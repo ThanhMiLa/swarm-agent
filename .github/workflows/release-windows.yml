@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: true
+      publish_release:
+        description: 'Publish the GitHub Release (instead of leaving it as a draft)'
+        required: false
+        type: boolean
+        default: true
       release_tag:
         description: 'Optional GitHub release tag (defaults to v<version> from tauri.conf.json)'
         required: false
@@ -46,6 +51,7 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           INPUT_UPLOAD_TO_RELEASE: ${{ inputs.upload_to_release }}
+          INPUT_PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           $version = (Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
           if (-not $version) {
@@ -55,10 +61,12 @@ jobs:
           $defaultTag = "v$version"
           $shouldBuild = $true
           $uploadToRelease = $true
+          $publishRelease = $true
           $targetTag = $defaultTag
 
           if ($env:EVENT_NAME -eq "workflow_dispatch") {
             $uploadToRelease = ($env:INPUT_UPLOAD_TO_RELEASE -ne "false")
+            $publishRelease = ($env:INPUT_PUBLISH_RELEASE -ne "false")
             $customTag = ("$($env:INPUT_RELEASE_TAG)").Trim()
             if ($customTag) {
               if ($customTag -ne $defaultTag) {
@@ -99,6 +107,7 @@ jobs:
           "target_tag=$targetTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "should_build=$($shouldBuild.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "upload_to_release=$($uploadToRelease.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "publish_release=$($publishRelease.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - uses: actions/setup-node@v4
         if: ${{ steps.meta.outputs.should_build == 'true' }}
@@ -173,17 +182,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TARGET_TAG: ${{ steps.meta.outputs.target_tag }}
           ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
         run: |
           $tag = $env:TARGET_TAG
           $setup = "src-tauri/target/release/bundle/nsis/$($env:ASSET_NAME)"
+          $notesFile = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          $env:NOTES_FILE = $notesFile
+          @'
+          const fs = require('fs');
+          const ver = process.env.APP_VERSION;
+          const lines = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n').split('\n');
+          const start = lines.findIndex((l) => l.startsWith(`## [${ver}]`));
+          let notes = '';
+          if (start !== -1) {
+            let end = lines.findIndex((l, i) => i > start && (l.startsWith('## [') || /^\[[^\]]+\]:/.test(l)));
+            if (end === -1) end = lines.length;
+            notes = lines.slice(start + 1, end).join('\n').trim();
+          }
+          fs.writeFileSync(process.env.NOTES_FILE, notes ? notes + '\n' : '');
+          '@ | node -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           $prevPref = $ErrorActionPreference
           $ErrorActionPreference = "Continue"
-          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>&1 | Out-Null
-          $exists = ($LASTEXITCODE -eq 0)
+          $viewJson = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null
+          $exists = ($LASTEXITCODE -eq 0 -and $viewJson)
           $ErrorActionPreference = $prevPref
+
+          $isDraft = $true
           if (-not $exists) {
-            gh release create $tag --repo $env:GITHUB_REPOSITORY --draft --title $tag --notes ""
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --draft --title "SwarmAgent $tag" --notes-file $notesFile
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            $isDraft = ($viewJson | ConvertFrom-Json).isDraft
           }
+
           gh release upload $tag $setup --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if ($env:PUBLISH_RELEASE -eq "true" -and $isDraft) {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

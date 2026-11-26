@@ -6,7 +6,7 @@
 
 ### Desktop workspace for multi-agent coding
 
-[![Version](https://img.shields.io/badge/version-0.2.4-22c55e)](CHANGELOG.md#024---2026-11-23)
+[![Version](https://img.shields.io/badge/version-0.2.7-22c55e)](CHANGELOG.md#027---2026-11-27)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tauri/tauri-original.svg" width="20" height="20" alt="Tauri"> <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2">
@@ -41,7 +41,10 @@ estimated costs.
 ## Get started
 
 Download the [macOS Apple Silicon DMG](https://github.com/ThanhMiLa/swarm-agent/releases/latest)
-from GitHub Releases. The build is ad-hoc signed and installed manually.
+or [Windows x64 installer](https://github.com/ThanhMiLa/swarm-agent/releases/latest)
+from GitHub Releases. Builds are currently unsigned (ad-hoc signed on macOS;
+on Windows, click **More info → Run anyway** if SmartScreen warns, or turn off
+**Smart App Control** if Windows 11 blocks unsigned installers).
 Install the agent CLIs you want to use so they’re available in the workspace
 composer.
 

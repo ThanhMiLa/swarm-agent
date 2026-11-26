@@ -67,10 +67,16 @@ updater signing keys (matching manual macOS DMG releases):
 
 ## SmartScreen: what unsigned means
 
-Windows does not block unsigned apps — it warns. A user downloading the
-installer sees **"Windows protected your PC"** with the publisher listed as
-*Unknown*. The path through is **More info → Run anyway**; the browser may
-add its own "keep file?" step before that.
+Windows does not block unsigned apps under standard SmartScreen — it warns. A
+user downloading the installer sees **"Windows protected your PC"** with the
+publisher listed as *Unknown*. The path through is **More info → Run anyway**;
+the browser may add its own "keep file?" step before that.
+
+> **Windows 11 Smart App Control:** If a user's machine has **Smart App Control**
+> set to **On**, Windows blocks unsigned installers outright without a *Run
+> anyway* option until Smart App Control is turned **Off** in *Windows Security
+> → App & browser control → Smart App Control settings* (or the installer is
+> Authenticode-signed).
 
 Put a line like this in every release's notes:
 
